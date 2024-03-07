@@ -1,0 +1,20 @@
+[package]
+name = "sse_solver_py"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ndarray = "0.15.6"
+num-complex = "0.4.5"
+pyo3 = { version = "0.20.3", features = ["num-complex"] }
+sse_solver = { version = "0.1.0", path = "../sse_solver" }
+
+
+[lib]
+name = "sse_solver_py"
+crate-type = ["cdylib"]
+
+[profile.release]
+codegen-units = 1
+panic = "abort"
+lto = "fat"
