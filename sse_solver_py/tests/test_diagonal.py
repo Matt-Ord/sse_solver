@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import qutip
 
-from sse_solver.sse_solver import solve_sse_euler
+from sse_solver_py import solve_sse_euler
 
 rng = np.random.default_rng()
 
@@ -47,7 +47,7 @@ def test_small_time(
     dt = np.pi / (10000 * diagonal_hamiltonian[0, 0])
     out = solve_sse_euler(
         initial_state,
-        diagonal_hamiltonian.reshape(-1),
+        list(diagonal_hamiltonian.reshape(-1)),
         [],
         [],
         [],

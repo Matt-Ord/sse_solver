@@ -11,7 +11,7 @@ sse_solver = { version = "0.1.0", path = "../sse_solver" }
 
 
 [lib]
-name = "sse_solver_py"
+name = "_solver"
 crate-type = ["cdylib"]
 
 [profile.release]

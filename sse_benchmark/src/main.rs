@@ -33,43 +33,43 @@ fn euler_solver_benchmark() {
     let dt = 0.0001;
     test::black_box(EulerSolver::solve(&initial_state, &system, n, step, dt));
 }
-
+#[allow(dead_code)]
 fn complex_array_dot_product() {
     let n = 200;
     let v1 = Array1::from_elem([n], Complex { im: 1f64, re: 1f64 });
     let v2 = Array1::from_elem([n], Complex { im: 1f64, re: 1f64 });
     for n in 0..1000 {
-        for m in 0..1000 {
-            for source in 0..n {
+        for _m in 0..1000 {
+            for _source in 0..n {
                 test::black_box(&v1.dot(&v2));
             }
         }
     }
 }
-
+#[allow(dead_code)]
 fn float_array_dot_product() {
     let n = 200;
     let v1 = Array1::from_elem([n], 1f64);
     let v2 = Array1::from_elem([n], 1f64);
     for n in 0..1000 {
-        for m in 0..1000 {
-            for source in 0..n {
-                for i in 0..4 {
+        for _m in 0..1000 {
+            for _source in 0..n {
+                for _i in 0..4 {
                     test::black_box(&v1.dot(&v2));
                 }
             }
         }
     }
 }
-
+#[allow(dead_code)]
 fn float_array_dot_product_vector() {
     let n = 200;
     let v1 = vec![1f64; n];
     let v2 = vec![1f64; n];
     for n in 0..1000 {
-        for m in 0..1000 {
-            for source in 0..n {
-                for i in 0..4 {
+        for _m in 0..1000 {
+            for _source in 0..n {
+                for _i in 0..4 {
                     test::black_box({
                         assert!(v1.len() == v2.len());
                         v1.iter().zip(v2.iter()).map(|(i, j)| i * j).sum::<f64>()
@@ -88,14 +88,15 @@ pub fn dot_prod_simd(a: &[f64], b: &[f64]) -> f64 {
         .reduce_sum()
 }
 
+#[allow(dead_code)]
 fn float_array_dot_product_vector_simd() {
     let n = 200;
     let v1 = vec![1f64; n];
     let v2 = vec![1f64; n];
     for n in 0..1000 {
-        for m in 0..1000 {
-            for source in 0..n {
-                for i in 0..4 {
+        for _m in 0..1000 {
+            for _source in 0..n {
+                for _i in 0..4 {
                     test::black_box({
                         assert!(v1.len() == v2.len());
 
@@ -107,6 +108,7 @@ fn float_array_dot_product_vector_simd() {
     }
 }
 
+#[allow(dead_code)]
 fn array_complex_dot_product() {
     let n = 200;
     let v1 = Complex {
@@ -118,8 +120,8 @@ fn array_complex_dot_product() {
         im: Array1::from_elem([n], 1f64),
     };
     for n in 0..1000 {
-        for m in 0..1000 {
-            for source in 0..n {
+        for _m in 0..1000 {
+            for _source in 0..n {
                 test::black_box({
                     let re_re = v1.re.dot(&v2.re);
                     let re_im = v1.re.dot(&v2.im);

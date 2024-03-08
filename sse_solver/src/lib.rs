@@ -1,7 +1,6 @@
 #![warn(clippy::pedantic)]
 
 use ndarray::{Array1, Array2, Axis};
-// use ndarray_linalg::Scalar;
 use num_complex::{Complex, Complex64};
 use rand::prelude::*;
 use rand_distr::StandardNormal;
@@ -48,6 +47,7 @@ pub trait Solver<T: System> {
         let mut current_t = 0f64;
         for _n in 1..n {
             out.push_row(current.view()).unwrap();
+            print!("{out}");
             current = Self::integrate(&current, system, current_t, step, dt);
             current_t += dt * step as f64;
         }
@@ -91,7 +91,8 @@ struct EulerStep {
 
 impl EulerStep {
     fn resolve(self, state: &Array1<Complex<f64>>) -> Array1<Complex<f64>> {
-        self.off_diagonal + (self.diagonal_amplitude * state)
+        // Also add on initial state ...
+        self.off_diagonal + ((self.diagonal_amplitude + 1f64) * state)
     }
 }
 impl DiagonalNoiseSource {
@@ -221,11 +222,95 @@ impl System for SSESystem {
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Add;
 
+    use ndarray::{s, Array1, Array2};
+    use num_complex::Complex;
+    use rand::Rng;
+
+    use crate::{DiagonalNoise, EulerSolver, SSESystem, Solver, StandardComplexNormal};
+
+    fn get_random_noise(n_operators: usize, n_states: usize) -> DiagonalNoise {
+        let rng = rand::thread_rng();
+        // let noise: Complex<f64> = rng.sample(StandardComplexNormal);
+        let amplitudes = Array1::from_iter(
+            rng.clone()
+                .sample_iter(StandardComplexNormal)
+                .take(n_operators),
+        );
+        let bra = &Array2::from_shape_vec(
+            [n_operators, n_states],
+            rng.clone()
+                .sample_iter(StandardComplexNormal)
+                .take(n_operators * n_states)
+                .collect(),
+        )
+        .unwrap();
+        let ket = &Array2::from_shape_vec(
+            [n_operators, n_states],
+            rng.clone()
+                .sample_iter(StandardComplexNormal)
+                .take(n_operators * n_states)
+                .collect(),
+        )
+        .unwrap();
+        DiagonalNoise::from_bra_ket(amplitudes, bra, ket)
+    }
+
+    fn get_random_system(n_operators: usize, n_states: usize) -> SSESystem {
+        let rng = rand::thread_rng();
+        let hamiltonian = Array2::from_shape_vec(
+            [n_states, n_states],
+            rng.clone()
+                .sample_iter(StandardComplexNormal)
+                .take(n_operators * n_operators)
+                .collect(),
+        )
+        .unwrap();
+        SSESystem {
+            noise: get_random_noise(n_operators, n_states),
+            hamiltonian,
+        }
+    }
+
+    fn get_diagonal_system(n_operators: usize, n_states: usize) -> SSESystem {
+        let rng = rand::thread_rng();
+        let hamiltonian = Array2::from_diag(&Array1::from_iter(
+            rng.clone()
+                .sample_iter(StandardComplexNormal)
+                .take(n_states),
+        ));
+        SSESystem {
+            noise: get_random_noise(n_operators, n_states),
+            hamiltonian,
+        }
+    }
+
+    fn get_initial_state(n_states: usize) -> Array1<Complex<f64>> {
+        let mut state = Array1::zeros([n_states]);
+        state[0] = Complex { im: 0f64, re: 1f64 };
+
+        state
+    }
     #[test]
-    fn it_works() {
-        let result = 2i32.add(2);
-        assert_eq!(result, 4);
+    fn test_initial_state_is_initial() {
+        let n_states = 10;
+        let system = get_random_system(10, n_states);
+        let initial_state = get_initial_state(n_states);
+
+        let result = EulerSolver::solve(&initial_state, &system, 1, 1, 0.0);
+        assert_eq!(result.slice(s![0, ..]), initial_state);
+    }
+    #[test]
+    fn test_zero_timestep() {
+        let n_states = 10;
+        let system = get_diagonal_system(0, n_states);
+        let initial_state = get_initial_state(n_states);
+
+        let n_out = 3;
+        let result = EulerSolver::solve(&initial_state, &system, n_out, 10, 0.0);
+
+        for i in 0..n_out {
+            assert_eq!(result.slice(s![i, ..]), initial_state);
+        }
     }
 }

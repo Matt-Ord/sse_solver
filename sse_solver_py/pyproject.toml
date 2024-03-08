@@ -32,3 +32,4 @@ testpaths = ["tests"]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
+module-name = "sse_solver_py._solver"

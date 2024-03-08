@@ -5,6 +5,7 @@ use num_complex::Complex;
 use pyo3::prelude::*;
 /// Formats the sum of two numbers as string.
 #[pyfunction]
+#[allow(clippy::too_many_arguments)]
 fn solve_sse_euler(
     initial_state: Vec<Complex<f64>>,
     hamiltonian: Vec<Complex<f64>>,
@@ -19,8 +20,8 @@ fn solve_sse_euler(
     let n_amplitudes = amplitudes.len();
     let noise = DiagonalNoise::from_bra_ket(
         amplitudes,
-        Array2::from_shape_vec((n_amplitudes, initial_state.len()), bra).unwrap(),
-        Array2::from_shape_vec((n_amplitudes, initial_state.len()), ket).unwrap(),
+        &Array2::from_shape_vec((n_amplitudes, initial_state.len()), bra).unwrap(),
+        &Array2::from_shape_vec((n_amplitudes, initial_state.len()), ket).unwrap(),
     );
     let system = SSESystem {
         noise,
@@ -39,7 +40,7 @@ fn solve_sse_euler(
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn sse_solver(_py: Python, m: &PyModule) -> PyResult<()> {
+fn _solver(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_sse_euler, m)?)?;
     Ok(())
 }
