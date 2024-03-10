@@ -1,6 +1,6 @@
 [workspace]
 
-members = ["sse_benchmark", "sse_solver", "sse_solver_py"]
+members = ["sse_benchmark", "sse_solver"]
 resolver = "2"
 
 [profile.release]

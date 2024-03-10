@@ -47,7 +47,6 @@ pub trait Solver<T: System> {
         let mut current_t = 0f64;
         for _n in 1..n {
             out.push_row(current.view()).unwrap();
-            print!("{out}");
             current = Self::integrate(&current, system, current_t, step, dt);
             current_t += dt * step as f64;
         }

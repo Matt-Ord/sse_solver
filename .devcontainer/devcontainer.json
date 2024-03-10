@@ -9,9 +9,6 @@
       "installTools": true,
       "version": "3.11"
     },
-    "ghcr.io/devcontainers-contrib/features/poetry:2": {
-      "version": "latest"
-    },
     "ghcr.io/devcontainers/features/rust:1": {
       "version": "latest",
       "profile": "minimal"
@@ -46,7 +43,7 @@
           "lib/surface_potential_analysis"
         ],
         "python.testing.pytestArgs": [
-          "tests"
+          "sse_solver_py/tests"
         ],
         "python.testing.unittestEnabled": false,
         "python.testing.pytestEnabled": true,
@@ -87,7 +84,9 @@
         "charliermarsh.ruff",
         "ms-python.vscode-pylance",
         "1YiB.rust-bundle",
-        "rust-lang.rust-analyzer"
+        "rust-lang.rust-analyzer",
+        "vadimcn.vscode-lldb",
+        "dseight.disasexpl"
       ]
     }
   }

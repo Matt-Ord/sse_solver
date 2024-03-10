@@ -1,0 +1,1 @@
+apt update && apt upgrade -y && apt install linux-perf -y
