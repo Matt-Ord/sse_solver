@@ -1,6 +1,7 @@
 [workspace]
 
 members = ["sse_benchmark", "sse_solver"]
+exclude = ["sse_solver_py"]
 resolver = "2"
 
 [profile.release]
