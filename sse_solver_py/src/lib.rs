@@ -1,12 +1,51 @@
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, Array3};
+use sse_solver::FullNoise;
 // use ndarray_linalg::Scalar;
 use ::sse_solver::{DiagonalNoise, EulerSolver, SSESystem, Solver};
 use num_complex::Complex;
-use pyo3::prelude::*;
-/// Formats the sum of two numbers as string.
+use pyo3::{exceptions::PyAssertionError, prelude::*};
+
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn solve_sse_euler(
+    initial_state: Vec<Complex<f64>>,
+    hamiltonian: Vec<Vec<Complex<f64>>>,
+    operators: Vec<Vec<Vec<Complex<f64>>>>,
+    n: usize,
+    step: usize,
+    dt: f64,
+) -> PyResult<Vec<Complex<f64>>> {
+    if initial_state.len() != hamiltonian.len() || hamiltonian[1].len() != hamiltonian.len() {
+        return Err(PyAssertionError::new_err("Hamiltonian has bad shape"));
+    }
+    if initial_state.len() != operators[1].len() || operators[1].len() != operators[2].len() {
+        return Err(PyAssertionError::new_err("Hamiltonian has bad shape"));
+    }
+    let noise = FullNoise::from_operators(
+        &Array3::from_shape_vec(
+            (operators.len(), initial_state.len(), initial_state.len()),
+            operators.into_iter().flatten().flatten().collect(),
+        )
+        .unwrap(),
+    );
+    let system = SSESystem {
+        noise,
+        hamiltonian: Array2::from_shape_vec(
+            (initial_state.len(), initial_state.len()),
+            hamiltonian.into_iter().flatten().collect(),
+        )
+        .unwrap(),
+    };
+
+    let initial_state = Array1::from(initial_state);
+    let out = EulerSolver::solve(&initial_state, &system, n, step, dt);
+
+    Ok(out.into_raw_vec())
+}
+
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn solve_sse_euler_bra_ket(
     initial_state: Vec<Complex<f64>>,
     hamiltonian: Vec<Complex<f64>>,
     amplitudes: Vec<Complex<f64>>,
@@ -42,5 +81,6 @@ fn solve_sse_euler(
 #[pymodule]
 fn _solver(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_sse_euler, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_sse_euler_bra_ket, m)?)?;
     Ok(())
 }
