@@ -3,9 +3,9 @@
 #![feature(slice_as_chunks)]
 #![feature(portable_simd)]
 #![feature(slice_flatten)]
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex;
-use sse_solver::{DiagonalNoise, EulerSolver, SSESystem, Solver};
+use sse_solver::{DiagonalNoise, EulerSolver, FullNoise, SSESystem, Solver};
 extern crate test;
 use std::simd::{prelude::*, StdFloat};
 
@@ -34,6 +34,77 @@ fn euler_solver_benchmark() {
     let dt = 0.0001;
     test::black_box(EulerSolver::solve(&initial_state, &system, n, step, dt));
 }
+#[allow(dead_code)]
+fn euler_solver_benchmark_full() {
+    let mut initial_state = Array1::from_elem([31], Complex { im: 0f64, re: 0f64 });
+    initial_state[0] = Complex {
+        re: 1f64,
+        ..Default::default()
+    };
+    let hamiltonian = Array2::from_elem(
+        [initial_state.len(), initial_state.len()],
+        Complex { im: 1f64, re: 1f64 },
+    );
+
+    let noise_vectors = Array3::from_elem(
+        [9, initial_state.len(), initial_state.len()],
+        Complex { im: 1f64, re: 1f64 },
+    );
+
+    let noise = FullNoise::from_operators(&noise_vectors);
+    let system = SSESystem { noise, hamiltonian };
+    let n = 100;
+    let step = 4000;
+    let dt = 0.0001;
+    test::black_box(EulerSolver::solve(&initial_state, &system, n, step, dt));
+}
+fn euler_solver_full_matrix_optimal_benchmark_step(
+    state: &Array1<Complex<f64>>,
+    h: &Array2<Complex<f64>>,
+    n_operators: usize,
+    out: &mut Array1<Complex<f64>>,
+) {
+    for _i in 0..(2 * n_operators + 1) {
+        test::black_box(h.dot(state));
+    }
+
+    for _i in 0..(2 * n_operators + 2) {
+        #[allow(clippy::unit_arg)]
+        test::black_box(*out += state);
+    }
+}
+
+#[allow(dead_code)]
+fn euler_solver_full_matrix_optimal_benchmark() {
+    let n_states = 31;
+    let n_operators = 9;
+
+    let mut initial_state = Array1::from_elem([n_states], Complex { im: 0f64, re: 0f64 });
+    initial_state[0] = Complex {
+        re: 1f64,
+        ..Default::default()
+    };
+
+    let mut out = initial_state.clone();
+
+    let hamiltonian = Array2::from_elem(
+        [initial_state.len(), initial_state.len()],
+        Complex { im: 1f64, re: 1f64 },
+    );
+
+    for _n in 0..100 {
+        for _m in 0..4000 {
+            #[allow(clippy::unit_arg)]
+            test::black_box(euler_solver_full_matrix_optimal_benchmark_step(
+                &initial_state,
+                &hamiltonian,
+                n_operators,
+                &mut out,
+            ));
+        }
+    }
+}
+
 #[allow(dead_code)]
 fn complex_array_dot_product() {
     let n = 200;
@@ -209,5 +280,5 @@ fn array_complex_dot_product() {
 }
 
 fn main() {
-    euler_solver_benchmark()
+    euler_solver_benchmark_full()
 }

@@ -1,1 +1,1 @@
-apt update && apt upgrade -y && apt install linux-perf -y
+apt update && apt upgrade -y && apt install linux-perf hotspot -y
