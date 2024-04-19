@@ -191,11 +191,11 @@ impl FullNoiseSource {
         // - (dt / 2) L^\dagger L |\psi>
         // - (dt / 2 <L^\dagger><L> + <L> dw) |\psi>
         let mut rng = rand::thread_rng();
-        let noise: Complex<f64> = rng.sample(StandardComplexNormal);
+        let dw = rng.sample::<Complex<f64>, _>(StandardComplexNormal) * dt.sqrt();
 
         let l_state = self.operator.dot(state);
-
         let l_dagger_l_state = self.conjugate_operator.dot(&l_state);
+
         let mut expectation = Complex::default();
         // Todo assert etc to improve perf
         for i in 0..state.len() {
@@ -205,10 +205,10 @@ impl FullNoiseSource {
         // (<L^\dagger>dt + dw) L|\psi>
         // - (dt / 2) L^\dagger L |\psi>
         step.off_diagonal +=
-            &((&l_state * (dt * (noise + expectation.conj()))) - (&l_dagger_l_state * (dt * 0.5)));
+            &((&l_state * (dw + dt * expectation.conj())) - (&l_dagger_l_state * (dt * 0.5)));
 
         // - (dt / 2 <L^\dagger><L> + <L> dw) |\psi>
-        step.diagonal_amplitude -= (0.5 * expectation.norm_sqr() + expectation * noise) * dt;
+        step.diagonal_amplitude -= 0.5 * expectation.norm_sqr() * dt + expectation * dw;
     }
 }
 
