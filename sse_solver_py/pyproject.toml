@@ -4,12 +4,15 @@ build-backend = "maturin"
 
 [project]
 name = "sse_solver_py"
+description = ""
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
+authors = [{ name = "Matthew Ord", email = "matthew.ord1@gmail.com" }]
+readme = "README.md"
 dynamic = ["version"]
 
 [project.optional-dependencies]
@@ -33,3 +36,7 @@ testpaths = ["tests"]
 [tool.maturin]
 features = ["pyo3/extension-module"]
 module-name = "sse_solver_py._solver"
+
+[tool.poetry]
+name = "sse_solver_py"
+package-mode = false
