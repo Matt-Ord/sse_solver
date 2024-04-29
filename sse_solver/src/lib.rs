@@ -174,7 +174,10 @@ impl DiagonalNoise {
 #[derive(Debug)]
 struct FullNoiseSource {
     // Uses the convention taken from https://doi.org/10.1103/PhysRevA.66.012108
-    // H_int = i(Lb^\dagger - bL^\dagger) where Z(t) = b(t)e^(iw_0t) is markovian
+    // However we multiply L by a factor of i
+    // L -> iL
+    // H_int = (Lb^\dagger + bL^\dagger) where Z(t) = b(t)e^(iw_0t) is markovian
+    // Note this has no effect in the final SSE.
     // [Z(t), Z(t)^\dagger] = \delta(t-s)
     // Note: we scale the operators such that gamma = 1
     operator: Array2<Complex<f64>>,
