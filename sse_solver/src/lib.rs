@@ -1,10 +1,134 @@
 #![warn(clippy::pedantic)]
 
-use ndarray::{Array1, Array2, Array3, Axis};
+use ndarray::{linalg::Dot, Array1, Array2, Array3, Axis};
 use num_complex::{Complex, Complex64};
 use rand::prelude::*;
-use rand_distr::StandardNormal;
+use rand_distr::{num_traits, StandardNormal};
 
+/// Represents an array, stored as a series of (offset) diagonals
+/// Each diagonal stores elements M_{i+offset % `N_0`, i}
+/// length of diagonals is shape[1], with a total of shape[0] offsets
+#[derive(Clone)]
+pub struct BandedArray<T> {
+    diagonals: Vec<Vec<T>>,
+    offsets: Vec<usize>,
+    shape: [usize; 2],
+}
+
+impl<T: Copy> BandedArray<T> {
+    #[must_use]
+    pub fn from_dense(dense: &Array2<T>) -> Self {
+        let offsets = (0..dense.shape()[0]).collect::<Vec<_>>();
+        let diagonals = offsets
+            .iter()
+            .map(|o| {
+                (0..dense.shape()[1])
+                    .map(|i| dense[[(i + o) % dense.shape()[0], i]])
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        BandedArray {
+            diagonals,
+            offsets,
+            shape: [dense.shape()[0], dense.shape()[1]],
+        }
+    }
+
+    #[must_use]
+    pub fn from_sparse(diagonals: &[Vec<T>], offsets: &[usize], shape: &[usize; 2]) -> Self {
+        BandedArray {
+            diagonals: diagonals.to_vec(),
+            offsets: offsets.to_vec(),
+            shape: shape.to_owned(),
+        }
+    }
+
+    fn transpose(&self) -> TransposedBandedArray<T> {
+        TransposedBandedArray {
+            diagonals: self.diagonals.clone(),
+            offsets: self.offsets.clone(),
+            shape: [self.shape[1], self.shape[0]],
+        }
+    }
+}
+impl<T: num_complex::ComplexFloat> TransposedBandedArray<T> {
+    fn conj(&self) -> TransposedBandedArray<T> {
+        TransposedBandedArray {
+            diagonals: self
+                .diagonals
+                .iter()
+                .map(|d| d.iter().map(|i| i.conj()).collect())
+                .collect(),
+            offsets: self.offsets.clone(),
+            shape: self.shape,
+        }
+    }
+}
+
+impl<
+        T: num_traits::Zero
+            + Clone
+            + Copy
+            + std::ops::AddAssign<<T as std::ops::Mul>::Output>
+            + std::ops::Mul,
+    > Dot<Array1<T>> for BandedArray<T>
+{
+    type Output = Array1<T>;
+
+    #[inline]
+    fn dot(&self, rhs: &Array1<T>) -> Self::Output {
+        assert!(self.shape[1] == rhs.len());
+        assert!(self.offsets.len() == self.diagonals.len());
+
+        let mut out = Array1::zeros(self.shape[0]);
+
+        for (offset, diagonal) in self.offsets.iter().zip(self.diagonals.iter()) {
+            for (i, &diag_val) in diagonal.iter().enumerate() {
+                let out_idx = (i + offset) % self.shape[0];
+                out[out_idx] += diag_val * rhs[i];
+            }
+        }
+
+        out
+    }
+}
+
+/// Represents an array, stored as a series of (offset) diagonals
+/// Each diagonal stores elements M_{i, i+offset % `N_0`}
+/// length of diagonals is shape[0], with a total of shape[1] offsets
+pub struct TransposedBandedArray<T> {
+    diagonals: Vec<Vec<T>>,
+    offsets: Vec<usize>,
+    shape: [usize; 2],
+}
+impl<
+        T: num_traits::Zero
+            + Clone
+            + Copy
+            + std::ops::AddAssign<<T as std::ops::Mul>::Output>
+            + std::ops::Mul,
+    > Dot<Array1<T>> for TransposedBandedArray<T>
+{
+    type Output = Array1<T>;
+
+    #[inline]
+    fn dot(&self, rhs: &Array1<T>) -> Self::Output {
+        assert!(self.shape[1] == rhs.len());
+        assert!(self.offsets.len() == self.diagonals.len());
+
+        let mut out = Array1::zeros(self.shape[0]);
+
+        for (offset, diagonal) in self.offsets.iter().zip(self.diagonals.iter()) {
+            for (i, &diag_val) in diagonal.iter().enumerate() {
+                let rhs_idx = (i + offset) % self.shape[1];
+                out[i] += diag_val * rhs[rhs_idx];
+            }
+        }
+
+        out
+    }
+}
 pub trait System {
     fn coherent(&self, state: &Array1<Complex<f64>>, t: f64, dt: f64) -> Array1<Complex<f64>>;
 
@@ -172,7 +296,7 @@ impl DiagonalNoise {
 }
 
 #[derive(Debug)]
-struct FullNoiseSource {
+struct FullNoiseSource<T: Tensor, U: Tensor> {
     // Uses the convention taken from https://doi.org/10.1103/PhysRevA.66.012108
     // However we multiply L by a factor of i
     // L -> iL
@@ -180,11 +304,11 @@ struct FullNoiseSource {
     // Note this has no effect in the final SSE.
     // [Z(t), Z(t)^\dagger] = \delta(t-s)
     // Note: we scale the operators such that gamma = 1
-    operator: Array2<Complex<f64>>,
-    conjugate_operator: Array2<Complex<f64>>,
+    operator: T,
+    conjugate_operator: U,
 }
 
-impl FullNoiseSource {
+impl<T: Tensor, U: Tensor> FullNoiseSource<T, U> {
     #[inline]
     fn accumulate_euler_step(&self, step: &mut EulerStep, state: &Array1<Complex<f64>>, dt: f64) {
         // Using the conventions from https://doi.org/10.1103/PhysRevA.66.012108
@@ -215,7 +339,7 @@ impl FullNoiseSource {
     }
 }
 
-impl FullNoise {
+impl FullNoise<Array2<Complex<f64>>, Array2<Complex<f64>>> {
     #[must_use]
     pub fn from_operators(operators: &Array3<Complex<f64>>) -> Self {
         Self(
@@ -230,10 +354,28 @@ impl FullNoise {
     }
 }
 
+impl FullNoise<BandedArray<Complex<f64>>, TransposedBandedArray<Complex<f64>>> {
+    #[must_use]
+    pub fn from_banded(operators: &[BandedArray<Complex<f64>>]) -> Self {
+        Self(
+            operators
+                .iter()
+                .map(|o| FullNoiseSource {
+                    operator: o.clone(),
+                    conjugate_operator: o.transpose().conj(),
+                })
+                .collect(),
+        )
+    }
+}
+
+pub trait Tensor: Dot<Array1<Complex<f64>>, Output = Array1<Complex<f64>>> {}
+
+impl<T: Dot<Array1<Complex<f64>>, Output = Array1<Complex<f64>>>> Tensor for T {}
 /// Represents a noise operator in factorized form
 /// `S_n = A_n |Ket_n> <Bra_n|`
 #[derive(Debug)]
-pub struct FullNoise(Vec<FullNoiseSource>);
+pub struct FullNoise<T: Tensor, U: Tensor>(Vec<FullNoiseSource<T, U>>);
 
 pub struct StandardComplexNormal;
 
@@ -271,7 +413,7 @@ impl Noise for DiagonalNoise {
     }
 }
 
-impl Noise for FullNoise {
+impl<T: Tensor, U: Tensor> Noise for FullNoise<T, U> {
     #[inline]
     fn euler_step(&self, state: &Array1<Complex<f64>>, dt: f64) -> Array1<Complex<f64>> {
         let mut step = EulerStep {
@@ -310,11 +452,14 @@ impl<N: Noise> System for SSESystem<N> {
 #[cfg(test)]
 mod tests {
 
-    use ndarray::{s, Array1, Array2, Array3};
-    use num_complex::Complex;
+    use ndarray::{linalg::Dot, s, Array1, Array2, Array3};
+    use num_complex::{Complex, ComplexFloat};
     use rand::Rng;
 
-    use crate::{DiagonalNoise, EulerSolver, FullNoise, SSESystem, Solver, StandardComplexNormal};
+    use crate::{
+        BandedArray, DiagonalNoise, EulerSolver, FullNoise, SSESystem, Solver,
+        StandardComplexNormal,
+    };
 
     fn get_random_noise(n_operators: usize, n_states: usize) -> DiagonalNoise {
         let rng = rand::thread_rng();
@@ -450,5 +595,63 @@ mod tests {
                 diagonal_result.slice(s![i, ..])
             );
         }
+    }
+    #[test]
+    fn test_banded_dot_product() {
+        let rng = rand::thread_rng();
+        let n_states = 100;
+
+        let full = Array2::from_shape_vec(
+            [n_states, n_states],
+            rng.clone()
+                .sample_iter::<Complex<f64>, _>(StandardComplexNormal)
+                .take(n_states * n_states)
+                .collect(),
+        )
+        .unwrap();
+        let banded = BandedArray::from_dense(&full);
+
+        let state = Array1::from_iter(
+            rng.clone()
+                .sample_iter::<Complex<f64>, _>(StandardComplexNormal)
+                .take(n_states),
+        );
+
+        let expected = full.dot(&state);
+        let actual = banded.dot(&state);
+        for i in 0..n_states {
+            assert!((expected[i] - actual[i]).abs() < 1e-8);
+        }
+        assert_eq!(expected.len(), actual.len());
+    }
+
+    #[test]
+    fn test_banded_transposed_dot_product() {
+        let rng = rand::thread_rng();
+        let n_states = 100;
+
+        let full = Array2::from_shape_vec(
+            [n_states, n_states],
+            rng.clone()
+                .sample_iter::<Complex<f64>, _>(StandardComplexNormal)
+                .take(n_states * n_states)
+                .collect(),
+        )
+        .unwrap();
+        let banded = BandedArray::from_dense(&full);
+
+        let state = Array1::from_iter(
+            rng.clone()
+                .sample_iter::<Complex<f64>, _>(StandardComplexNormal)
+                .take(n_states),
+        );
+
+        let expected = full.reversed_axes().dot(&state);
+        let actual = banded.transpose().dot(&state);
+
+        for i in 0..n_states {
+            assert!((expected[i] - actual[i]).abs() < 1e-8);
+        }
+        assert_eq!(expected.len(), actual.len());
     }
 }

@@ -1,5 +1,5 @@
 use ndarray::{Array1, Array2, Array3};
-use sse_solver::FullNoise;
+use sse_solver::{BandedArray, FullNoise};
 // use ndarray_linalg::Scalar;
 use ::sse_solver::{DiagonalNoise, EulerSolver, SSESystem, Solver};
 use num_complex::Complex;
@@ -27,6 +27,43 @@ fn solve_sse_euler(
             operators.into_iter().flatten().flatten().collect(),
         )
         .unwrap(),
+    );
+    let system = SSESystem {
+        noise,
+        hamiltonian: Array2::from_shape_vec(
+            (initial_state.len(), initial_state.len()),
+            hamiltonian.into_iter().flatten().collect(),
+        )
+        .unwrap(),
+    };
+
+    let initial_state = Array1::from(initial_state);
+    let out = EulerSolver::solve(&initial_state, &system, n, step, dt);
+
+    Ok(out.into_raw_vec())
+}
+
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn solve_sse_euler_banded(
+    initial_state: Vec<Complex<f64>>,
+    hamiltonian: Vec<Vec<Complex<f64>>>,
+    operators_diagonals: Vec<Vec<Vec<Complex<f64>>>>,
+    operators_offsets: Vec<Vec<usize>>,
+    n: usize,
+    step: usize,
+    dt: f64,
+) -> PyResult<Vec<Complex<f64>>> {
+    if initial_state.len() != hamiltonian.len() || hamiltonian[1].len() != hamiltonian.len() {
+        return Err(PyAssertionError::new_err("Hamiltonian has bad shape"));
+    }
+    let shape = [hamiltonian.len(), hamiltonian[1].len()];
+    let noise = FullNoise::from_banded(
+        &operators_diagonals
+            .iter()
+            .zip(operators_offsets.iter())
+            .map(|(diagonals, offsets)| BandedArray::from_sparse(diagonals, offsets, &shape))
+            .collect::<Vec<_>>(),
     );
     let system = SSESystem {
         noise,
@@ -82,5 +119,6 @@ fn solve_sse_euler_bra_ket(
 fn _solver(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_sse_euler, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_euler_bra_ket, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_sse_euler_banded, m)?)?;
     Ok(())
 }

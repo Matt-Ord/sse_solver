@@ -73,7 +73,10 @@
           "langevin",
           "wavefunctions",
           "diagonalization",
-          "Caldeira"
+          "Caldeira",
+          "simd",
+          "pyfunction",
+          "pymodule"
         ]
       },
       "extensions": [

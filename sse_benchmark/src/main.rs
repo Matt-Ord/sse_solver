@@ -3,9 +3,10 @@
 #![feature(slice_as_chunks)]
 #![feature(portable_simd)]
 #![feature(slice_flatten)]
-use ndarray::{Array1, Array2, Array3};
+
+use ndarray::{linalg::Dot, Array1, Array2, Array3};
 use num_complex::Complex;
-use sse_solver::{DiagonalNoise, EulerSolver, FullNoise, SSESystem, Solver};
+use sse_solver::{BandedArray, DiagonalNoise, EulerSolver, FullNoise, SSESystem, Solver};
 extern crate test;
 use std::simd::{prelude::*, StdFloat};
 
@@ -279,6 +280,135 @@ fn array_complex_dot_product() {
     }
 }
 
+// impl<
+//         T: num_traits::Zero
+//             + Clone
+//             + AddAssign
+//             + Mul
+//             + Copy
+//             + std::ops::AddAssign<<T as std::ops::Mul>::Output>,
+//     > Dot<Array1<T>> for BandedArray<T>
+// {
+//     type Output = Array1<T>;
+
+//     #[inline]
+//     fn dot(&self, rhs: &Array1<T>) -> Self::Output {
+//         assert!(self.shape[1] == rhs.len());
+//         assert!(self.offsets.len() == self.diagonals.len());
+
+//         let mut out = Array1::zeros(self.shape[0]);
+
+//         for (offset, diagonal) in self.offsets.iter().zip(self.diagonals.iter()) {
+//             for (i, &rhs_val) in rhs.iter().enumerate() {
+//                 let out_index = (i + offset) % self.shape[0];
+//                 out[out_index] += diagonal[i] * rhs_val;
+//             }
+//         }
+
+//         out
+//     }
+// }
+
+// impl<
+//         T: num_traits::Zero
+//             + Clone
+//             + AddAssign
+//             + Mul
+//             + Copy
+//             + std::ops::AddAssign<<T as std::ops::Mul>::Output>,
+//     > Dot<Array1<T>> for BandedArray<T>
+// {
+//     type Output = Array1<T>;
+
+//     #[inline]
+//     fn dot(&self, rhs: &Array1<T>) -> Self::Output {
+//         assert!(self.shape[1] == rhs.len());
+//         assert!(self.offsets.len() == self.diagonals.len());
+
+//         let mut out = Array1::zeros(self.shape[0]);
+
+//         for (offset, diagonal) in self.offsets.iter().zip(self.diagonals.iter()) {
+//             // let n = (self.shape[1] + offset).div_floor(self.shape[0]) - 1;
+//             let mut iter_elem = diagonal.iter().zip(rhs.iter());
+
+//             // Take the first N_0 - offset
+//             // These correspond to i=offset..N_0, j=0..N_0-offset
+//             (*offset..self.shape[0])
+//                 .zip(&mut iter_elem)
+//                 .for_each(|(i, (d, r))| out[i] += *d * *r);
+
+//             // In chunks of N_0, starting at N_0-offset
+//             // These correspond to i=0..N_0 and some j
+//             iter_elem
+//                 .zip((0..self.shape[0]).cycle())
+//                 .for_each(|((d, r), i)| out[i] += *d * *r);
+//         }
+
+//         out
+//     }
+// }
+#[allow(dead_code)]
+fn array_dot_benchmark_full() {
+    let shape = [100, 100];
+
+    let a = Array2::<Complex<f64>>::ones([shape[0], shape[1]]);
+    let b = Array1::<Complex<f64>>::ones([shape[1]]);
+    let mut out = Array1::<Complex<f64>>::ones([shape[0]]);
+    for _i in 0..10000000 {
+        #[allow(clippy::unit_arg)]
+        test::black_box(out += &a.dot(&b));
+    }
+}
+#[allow(dead_code)]
+fn array_dot_benchmark_array_2() {
+    let n_bands = 3;
+    let shape = [100, 100];
+
+    let a = Array2::<Complex<f64>>::ones([n_bands, shape[1]]);
+    let b = Array1::<Complex<f64>>::ones([shape[1]]);
+    let mut out = Array1::<Complex<f64>>::ones([shape[0]]);
+    for _i in 0..10000000 {
+        #[allow(clippy::unit_arg)]
+        test::black_box(out += a.dot(&b)[0]);
+    }
+}
+
+#[allow(dead_code)]
+fn banded_array_dot_benchmark_approx() {
+    let n_bands = 3;
+    let shape = [100, 100];
+
+    let a = Array1::<Complex<f64>>::ones([shape[1]]);
+    let b = Array1::<Complex<f64>>::ones([shape[1]]);
+    let mut out = Array1::<Complex<f64>>::ones([shape[0]]);
+    for _i in 0..10000000 {
+        for _j in 0..n_bands {
+            #[allow(clippy::unit_arg)]
+            test::black_box(out += a.dot(&b));
+        }
+    }
+}
+
+fn banded_array_dot_benchmark() {
+    let n_bands = 3;
+    let shape = [100, 100];
+
+    let a = BandedArray::<Complex<f64>>::from_sparse(
+        &Vec::from_iter(
+            (0..n_bands).map(|_| Vec::from_iter(Array1::<Complex<f64>>::ones([shape[1]]))),
+        ),
+        &Vec::from_iter(0..n_bands),
+        &shape,
+    );
+    let b = Array1::<Complex<f64>>::ones([shape[1]]);
+
+    let mut out = Array1::<Complex<f64>>::ones([shape[1]]);
+    for _i in 0..10000000 {
+        #[allow(clippy::unit_arg)]
+        test::black_box(out += &a.dot(&b));
+    }
+}
+
 fn main() {
-    euler_solver_benchmark_full()
+    banded_array_dot_benchmark()
 }
