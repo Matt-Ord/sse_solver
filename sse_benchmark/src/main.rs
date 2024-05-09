@@ -415,7 +415,7 @@ fn banded_array_transposed_dot_benchmark() {
         &Vec::from_iter(
             (0..n_bands).map(|_| Vec::from_iter(Array1::<Complex<f64>>::ones([shape[1]]))),
         ),
-        &Vec::from_iter((shape[0] - n_bands)..shape[0]),
+        &Vec::from_iter(0..n_bands),
         &shape,
     )
     .transpose();

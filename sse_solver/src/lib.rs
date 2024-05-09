@@ -55,6 +55,7 @@ impl<T: Copy> BandedArray<T> {
         }
     }
 
+    #[must_use]
     pub fn transpose(&self) -> TransposedBandedArray<T> {
         TransposedBandedArray {
             diagonals: self.diagonals.clone(),
@@ -198,16 +199,16 @@ impl<
         for (offset, diagonal) in self.offsets.iter().zip(self.diagonals.iter()) {
             let mut iter_elem = diagonal.iter().zip(out.iter_mut());
 
-            // Take the first N_0 - offset
-            // These correspond to i=offset..N_0, j=0..N_0-offset
-            (*offset..self.shape[0])
+            // Take the first N_1 - offset
+            // These correspond to j=offset..N_1, i=0..N_0-offset
+            (*offset..self.shape[1])
                 .zip(&mut iter_elem)
                 .for_each(|(i, (d, o))| *o += *d * rhs[i]);
 
             // In chunks of N_0, starting at N_0-offset
             // These correspond to i=0..N_0 and some j
             iter_elem
-                .zip((0..self.shape[0]).cycle())
+                .zip((0..self.shape[1]).cycle())
                 .for_each(|((d, o), i)| *o += *d * rhs[i]);
         }
 
@@ -690,13 +691,13 @@ mod tests {
     #[test]
     fn test_banded_dot_product() {
         let rng = rand::thread_rng();
-        let n_states = 100;
+        let shape = [10, 100];
 
         let full = Array2::from_shape_vec(
-            [n_states, n_states],
+            shape,
             rng.clone()
                 .sample_iter::<Complex<f64>, _>(StandardComplexNormal)
-                .take(n_states * n_states)
+                .take(shape[0] * shape[1])
                 .collect(),
         )
         .unwrap();
@@ -705,12 +706,12 @@ mod tests {
         let state = Array1::from_iter(
             rng.clone()
                 .sample_iter::<Complex<f64>, _>(StandardComplexNormal)
-                .take(n_states),
+                .take(shape[1]),
         );
 
         let expected = full.dot(&state);
         let actual = banded.dot(&state);
-        for i in 0..n_states {
+        for i in 0..shape[0] {
             assert!((expected[i] - actual[i]).abs() < 1e-8);
         }
         assert_eq!(expected.len(), actual.len());
@@ -719,13 +720,13 @@ mod tests {
     #[test]
     fn test_banded_transposed_dot_product() {
         let rng = rand::thread_rng();
-        let n_states = 100;
+        let shape = [100, 10];
 
         let full = Array2::from_shape_vec(
-            [n_states, n_states],
+            [shape[1], shape[0]],
             rng.clone()
                 .sample_iter::<Complex<f64>, _>(StandardComplexNormal)
-                .take(n_states * n_states)
+                .take(shape[0] * shape[1])
                 .collect(),
         )
         .unwrap();
@@ -734,13 +735,13 @@ mod tests {
         let state = Array1::from_iter(
             rng.clone()
                 .sample_iter::<Complex<f64>, _>(StandardComplexNormal)
-                .take(n_states),
+                .take(shape[1]),
         );
 
         let expected = full.reversed_axes().dot(&state);
         let actual = banded.transpose().dot(&state);
 
-        for i in 0..n_states {
+        for i in 0..shape[0] {
             assert!((expected[i] - actual[i]).abs() < 1e-8);
         }
         assert_eq!(expected.len(), actual.len());

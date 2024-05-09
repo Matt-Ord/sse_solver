@@ -163,7 +163,6 @@ dependencies = [
  "matrixmultiply",
  "ndarray",
  "num-complex",
- "num-traits",
  "sse_solver",
 ]
 
