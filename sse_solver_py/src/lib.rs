@@ -47,17 +47,15 @@ fn solve_sse_euler(
 #[allow(clippy::too_many_arguments)]
 fn solve_sse_euler_banded(
     initial_state: Vec<Complex<f64>>,
-    hamiltonian: Vec<Vec<Complex<f64>>>,
+    hamiltonian_diagonal: Vec<Vec<Complex<f64>>>,
+    hamiltonian_offset: Vec<usize>,
     operators_diagonals: Vec<Vec<Vec<Complex<f64>>>>,
     operators_offsets: Vec<Vec<usize>>,
     n: usize,
     step: usize,
     dt: f64,
 ) -> PyResult<Vec<Complex<f64>>> {
-    if initial_state.len() != hamiltonian.len() || hamiltonian[1].len() != hamiltonian.len() {
-        return Err(PyAssertionError::new_err("Hamiltonian has bad shape"));
-    }
-    let shape = [hamiltonian.len(), hamiltonian[1].len()];
+    let shape = [initial_state.len(), initial_state.len()];
     let noise = FullNoise::from_banded(
         &operators_diagonals
             .iter()
@@ -67,11 +65,7 @@ fn solve_sse_euler_banded(
     );
     let system = SSESystem {
         noise,
-        hamiltonian: Array2::from_shape_vec(
-            (initial_state.len(), initial_state.len()),
-            hamiltonian.into_iter().flatten().collect(),
-        )
-        .unwrap(),
+        hamiltonian: BandedArray::from_sparse(&hamiltonian_diagonal, &hamiltonian_offset, &shape),
     };
 
     let initial_state = Array1::from(initial_state);

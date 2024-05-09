@@ -34,12 +34,21 @@ impl<T: Copy> BandedArray<T> {
             shape: [dense.shape()[0], dense.shape()[1]],
         }
     }
-
+    /// # Panics
+    ///
+    /// Will panic if diagonals are not of length shape[1]
+    /// Will panic if len(diagonals) !== len(offsets)
     #[must_use]
     pub fn from_sparse(diagonals: &[Vec<T>], offsets: &[usize], shape: &[usize; 2]) -> Self {
+        for d in diagonals {
+            assert_eq!(d.len(), shape[1]);
+        }
+        let diagonals_vec = diagonals.to_vec();
+        let offsets_vec = offsets.to_vec();
+        assert_eq!(diagonals_vec.len(), offsets_vec.len());
         BandedArray {
-            diagonals: diagonals.to_vec(),
-            offsets: offsets.to_vec(),
+            diagonals: diagonals_vec,
+            offsets: offsets_vec,
             shape: shape.to_owned(),
         }
     }
@@ -429,12 +438,12 @@ impl<T: Tensor, U: Tensor> Noise for FullNoise<T, U> {
     }
 }
 
-pub struct SSESystem<N: Noise> {
-    pub hamiltonian: Array2<Complex<f64>>,
+pub struct SSESystem<H: Tensor, N: Noise> {
+    pub hamiltonian: H,
     pub noise: N,
 }
 
-impl<N: Noise> System for SSESystem<N> {
+impl<H: Tensor, N: Noise> System for SSESystem<H, N> {
     fn coherent(&self, state: &Array1<Complex<f64>>, _t: f64, dt: f64) -> Array1<Complex<f64>> {
         self.hamiltonian.dot(state) * Complex { re: 0f64, im: -dt }
     }
@@ -488,7 +497,10 @@ mod tests {
         DiagonalNoise::from_bra_ket(amplitudes, bra, ket)
     }
 
-    fn get_random_system(n_operators: usize, n_states: usize) -> SSESystem<DiagonalNoise> {
+    fn get_random_system(
+        n_operators: usize,
+        n_states: usize,
+    ) -> SSESystem<Array2<Complex<f64>>, DiagonalNoise> {
         let rng = rand::thread_rng();
         let hamiltonian = Array2::from_shape_vec(
             [n_states, n_states],
@@ -504,7 +516,10 @@ mod tests {
         }
     }
 
-    fn get_diagonal_system(n_operators: usize, n_states: usize) -> SSESystem<DiagonalNoise> {
+    fn get_diagonal_system(
+        n_operators: usize,
+        n_states: usize,
+    ) -> SSESystem<Array2<Complex<f64>>, DiagonalNoise> {
         let rng = rand::thread_rng();
         let hamiltonian = Array2::from_diag(&Array1::from_iter(
             rng.clone()
