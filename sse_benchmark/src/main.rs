@@ -380,8 +380,8 @@ fn banded_array_dot_benchmark_approx() {
 
     let a = Array1::<Complex<f64>>::ones([shape[1]]);
     let b = Array1::<Complex<f64>>::ones([shape[1]]);
-    let mut out = Array1::<Complex<f64>>::ones([shape[0]]);
-    for _i in 0..10000000 {
+    let mut out = Array1::<Complex<f64>>::ones([shape[1]]);
+    for _i in 0..100000000 {
         for _j in 0..n_bands {
             #[allow(clippy::unit_arg)]
             test::black_box(out += a.dot(&b));
@@ -397,18 +397,35 @@ fn banded_array_dot_benchmark() {
         &Vec::from_iter(
             (0..n_bands).map(|_| Vec::from_iter(Array1::<Complex<f64>>::ones([shape[1]]))),
         ),
-        &Vec::from_iter(0..n_bands),
+        &Vec::from_iter((shape[0] - n_bands)..shape[0]),
         &shape,
     );
     let b = Array1::<Complex<f64>>::ones([shape[1]]);
-
-    let mut out = Array1::<Complex<f64>>::ones([shape[1]]);
-    for _i in 0..10000000 {
+    for _i in 0..100000000 {
         #[allow(clippy::unit_arg)]
-        test::black_box(out += &a.dot(&b));
+        test::black_box(&a.dot(&b));
+    }
+}
+
+fn banded_array_transposed_dot_benchmark() {
+    let n_bands = 3;
+    let shape = [100, 100];
+
+    let a = BandedArray::<Complex<f64>>::from_sparse(
+        &Vec::from_iter(
+            (0..n_bands).map(|_| Vec::from_iter(Array1::<Complex<f64>>::ones([shape[1]]))),
+        ),
+        &Vec::from_iter((shape[0] - n_bands)..shape[0]),
+        &shape,
+    )
+    .transpose();
+    let b = Array1::<Complex<f64>>::ones([shape[1]]);
+    for _i in 0..100000000 {
+        #[allow(clippy::unit_arg)]
+        test::black_box(&a.dot(&b));
     }
 }
 
 fn main() {
-    banded_array_dot_benchmark()
+    banded_array_transposed_dot_benchmark()
 }

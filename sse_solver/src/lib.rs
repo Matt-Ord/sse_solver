@@ -1,5 +1,7 @@
 #![warn(clippy::pedantic)]
 
+use std::ops::Mul;
+
 use ndarray::{linalg::Dot, Array1, Array2, Array3, Axis};
 use num_complex::{Complex, Complex64};
 use rand::prelude::*;
@@ -53,7 +55,7 @@ impl<T: Copy> BandedArray<T> {
         }
     }
 
-    fn transpose(&self) -> TransposedBandedArray<T> {
+    pub fn transpose(&self) -> TransposedBandedArray<T> {
         TransposedBandedArray {
             diagonals: self.diagonals.clone(),
             offsets: self.offsets.clone(),
@@ -75,6 +77,34 @@ impl<T: num_complex::ComplexFloat> TransposedBandedArray<T> {
     }
 }
 
+// impl<
+//         T: num_traits::Zero
+//             + Clone
+//             + Copy
+//             + std::ops::AddAssign<<T as std::ops::Mul>::Output>
+//             + std::ops::Mul,
+//     > Dot<Array1<T>> for BandedArray<T>
+// {
+//     type Output = Array1<T>;
+
+//     #[inline]
+//     fn dot(&self, rhs: &Array1<T>) -> Self::Output {
+//         assert!(self.shape[1] == rhs.len());
+//         assert!(self.offsets.len() == self.diagonals.len());
+
+//         let mut out = Array1::zeros(self.shape[0]);
+
+//         for (offset, diagonal) in self.offsets.iter().zip(self.diagonals.iter()) {
+//             for (i, &rhs_val) in rhs.iter().enumerate() {
+//                 let out_idx = (i + offset) % self.shape[0];
+//                 out[out_idx] += diagonal[i] * rhs_val;
+//             }
+//         }
+
+//         out
+//     }
+// }
+
 impl<
         T: num_traits::Zero
             + Clone
@@ -93,10 +123,19 @@ impl<
         let mut out = Array1::zeros(self.shape[0]);
 
         for (offset, diagonal) in self.offsets.iter().zip(self.diagonals.iter()) {
-            for (i, &diag_val) in diagonal.iter().enumerate() {
-                let out_idx = (i + offset) % self.shape[0];
-                out[out_idx] += diag_val * rhs[i];
-            }
+            let mut iter_elem = diagonal.iter().zip(rhs.iter());
+
+            // Take the first N_0 - offset
+            // These correspond to i=offset..N_0, j=0..N_0-offset
+            (*offset..self.shape[0])
+                .zip(&mut iter_elem)
+                .for_each(|(i, (d, r))| out[i] += *d * *r);
+
+            // In chunks of N_0, starting at N_0-offset
+            // These correspond to i=0..N_0 and some j starting at N_0-offset
+            iter_elem
+                .zip((0..self.shape[0]).cycle())
+                .for_each(|((d, r), i)| out[i] += *d * *r);
         }
 
         out
@@ -111,6 +150,34 @@ pub struct TransposedBandedArray<T> {
     offsets: Vec<usize>,
     shape: [usize; 2],
 }
+// impl<
+//         T: num_traits::Zero
+//             + Clone
+//             + Copy
+//             + std::ops::AddAssign<<T as std::ops::Mul>::Output>
+//             + std::ops::Mul,
+//     > Dot<Array1<T>> for TransposedBandedArray<T>
+// {
+//     type Output = Array1<T>;
+
+//     #[inline]
+//     fn dot(&self, rhs: &Array1<T>) -> Self::Output {
+//         assert!(self.shape[1] == rhs.len());
+//         assert!(self.offsets.len() == self.diagonals.len());
+
+//         let mut out = Array1::zeros(self.shape[0]);
+
+//         for (offset, diagonal) in self.offsets.iter().zip(self.diagonals.iter()) {
+//             for (i, &diag_val) in diagonal.iter().enumerate() {
+//                 let rhs_idx = (i + offset) % self.shape[1];
+//                 out[i] += diag_val * rhs[rhs_idx];
+//             }
+//         }
+
+//         out
+//     }
+// }
+
 impl<
         T: num_traits::Zero
             + Clone
@@ -129,10 +196,19 @@ impl<
         let mut out = Array1::zeros(self.shape[0]);
 
         for (offset, diagonal) in self.offsets.iter().zip(self.diagonals.iter()) {
-            for (i, &diag_val) in diagonal.iter().enumerate() {
-                let rhs_idx = (i + offset) % self.shape[1];
-                out[i] += diag_val * rhs[rhs_idx];
-            }
+            let mut iter_elem = diagonal.iter().zip(out.iter_mut());
+
+            // Take the first N_0 - offset
+            // These correspond to i=offset..N_0, j=0..N_0-offset
+            (*offset..self.shape[0])
+                .zip(&mut iter_elem)
+                .for_each(|(i, (d, o))| *o += *d * rhs[i]);
+
+            // In chunks of N_0, starting at N_0-offset
+            // These correspond to i=0..N_0 and some j
+            iter_elem
+                .zip((0..self.shape[0]).cycle())
+                .for_each(|((d, o), i)| *o += *d * rhs[i]);
         }
 
         out
