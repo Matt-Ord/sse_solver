@@ -36,7 +36,7 @@ testpaths = ["tests"]
 [tool.maturin]
 features = ["pyo3/extension-module"]
 module-name = "sse_solver_py._solver"
-rustc-args = ["-C target-cpu=native"]
+rustc-args = ["-Ctarget-cpu=native"]
 
 [tool.poetry]
 name = "sse_solver_py"

@@ -1,7 +1,5 @@
 #![warn(clippy::pedantic)]
 
-use std::ops::Mul;
-
 use ndarray::{linalg::Dot, Array1, Array2, Array3, Axis};
 use num_complex::{Complex, Complex64};
 use rand::prelude::*;
