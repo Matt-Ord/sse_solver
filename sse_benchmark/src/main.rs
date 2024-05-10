@@ -59,6 +59,43 @@ fn euler_solver_benchmark_full() {
     let dt = 0.0001;
     test::black_box(EulerSolver::solve(&initial_state, &system, n, step, dt));
 }
+
+#[allow(dead_code)]
+fn euler_solver_benchmark_sparse() {
+    let mut initial_state = Array1::from_elem([93], Complex { im: 0f64, re: 0f64 });
+    initial_state[0] = Complex {
+        re: 1f64,
+        ..Default::default()
+    };
+
+    let hamiltonian = BandedArray::<Complex<f64>>::from_sparse(
+        &Vec::from_iter(
+            (0..3).map(|_| Vec::from_iter(Array1::<Complex<f64>>::ones([initial_state.len()]))),
+        ),
+        &Vec::from_iter(0..3),
+        &[initial_state.len(), initial_state.len()],
+    );
+
+    let noise = FullNoise::from_banded(
+        &(0..6)
+            .map(|_i| {
+                BandedArray::from_sparse(
+                    &Vec::from_iter((0..2).map(|_| {
+                        Vec::from_iter(Array1::<Complex<f64>>::ones([initial_state.len()]))
+                    })),
+                    &Vec::from_iter(0..2),
+                    &[initial_state.len(), initial_state.len()],
+                )
+            })
+            .collect::<Vec<_>>(),
+    );
+    let system = SSESystem { noise, hamiltonian };
+    let n = 800;
+    let step = 8000;
+    let dt = 0.0001;
+    test::black_box(EulerSolver::solve(&initial_state, &system, n, step, dt));
+}
+
 fn euler_solver_full_matrix_optimal_benchmark_step(
     state: &Array1<Complex<f64>>,
     h: &Array2<Complex<f64>>,
@@ -389,6 +426,7 @@ fn banded_array_dot_benchmark_approx() {
     }
 }
 
+#[allow(dead_code)]
 fn banded_array_dot_benchmark() {
     let n_bands = 3;
     let shape = [100, 100];
@@ -407,6 +445,7 @@ fn banded_array_dot_benchmark() {
     }
 }
 
+#[allow(dead_code)]
 fn banded_array_transposed_dot_benchmark() {
     let n_bands = 3;
     let shape = [100, 100];
@@ -427,5 +466,5 @@ fn banded_array_transposed_dot_benchmark() {
 }
 
 fn main() {
-    banded_array_transposed_dot_benchmark()
+    euler_solver_benchmark_sparse()
 }

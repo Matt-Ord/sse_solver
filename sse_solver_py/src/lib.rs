@@ -1,3 +1,5 @@
+use std::{fs::File, io::Write};
+
 use ndarray::{Array1, Array2, Array3};
 use sse_solver::{BandedArray, FullNoise};
 // use ndarray_linalg::Scalar;
@@ -102,6 +104,10 @@ fn solve_sse_euler_bra_ket(
         .unwrap(),
     };
 
+    let path = "results.txt";
+    let mut output = File::create(path)?;
+    let _ = output.write_all(serde_json::to_string(&system).unwrap().as_bytes());
+
     let initial_state = Array1::from(initial_state);
     let out = EulerSolver::solve(&initial_state, &system, n, step, dt);
 
@@ -110,7 +116,7 @@ fn solve_sse_euler_bra_ket(
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn _solver(_py: Python, m: &PyModule) -> PyResult<()> {
+fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_sse_euler, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_euler_bra_ket, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_euler_banded, m)?)?;

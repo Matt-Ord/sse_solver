@@ -4,6 +4,7 @@ use ndarray::{linalg::Dot, Array1, Array2, Array3, Axis};
 use num_complex::{Complex, Complex64};
 use rand::prelude::*;
 use rand_distr::{num_traits, StandardNormal};
+use serde::{Deserialize, Serialize};
 
 /// Represents an array, stored as a series of (offset) diagonals
 /// Each diagonal stores elements M_{i+offset % `N_0`, i}
@@ -279,7 +280,7 @@ impl<T: System> Solver<T> for EulerSolver {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 struct DiagonalNoiseSource {
     amplitude: Complex<f64>,
     // LHS of the factorized operators.
@@ -348,7 +349,7 @@ impl DiagonalNoiseSource {
 
 /// Represents a noise operator in factorized form
 /// `S_n = A_n |Ket_n> <Bra_n|`
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DiagonalNoise(Vec<DiagonalNoiseSource>);
 
 impl DiagonalNoise {
@@ -513,6 +514,7 @@ impl<T: Tensor, U: Tensor> Noise for FullNoise<T, U> {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct SSESystem<H: Tensor, N: Noise> {
     pub hamiltonian: H,
     pub noise: N,
