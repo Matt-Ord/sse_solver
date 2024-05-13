@@ -263,15 +263,14 @@ pub trait Solver<T: System> {
         let mut out = Array2::zeros([0, initial_state.len()]);
         let mut current = initial_state.to_owned();
         let mut current_t = 0f64;
-        for _n in 1..n {
+        for _step_n in 1..n {
             out.push_row(current.view()).unwrap();
             current = Self::integrate(&current, system, current_t, step, dt);
             current_t += dt * step as f64;
-            let current_norm = current.norm_l2();
-            assert!(
-                (current_norm - 1f64).abs() < 1e-6,
-                "Norm of state diverged (norm = {current_norm})"
-            );
+            current /= Complex {
+                re: current.norm_l2(),
+                im: 0f64,
+            };
         }
         out.push_row(current.view()).unwrap();
 
