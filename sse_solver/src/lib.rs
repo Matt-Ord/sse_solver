@@ -1,6 +1,7 @@
 #![warn(clippy::pedantic)]
 
 use ndarray::{linalg::Dot, Array1, Array2, Array3, Axis};
+use ndarray_linalg::Norm;
 use num_complex::{Complex, Complex64};
 use rand::prelude::*;
 use rand_distr::{num_traits, StandardNormal};
@@ -266,6 +267,11 @@ pub trait Solver<T: System> {
             out.push_row(current.view()).unwrap();
             current = Self::integrate(&current, system, current_t, step, dt);
             current_t += dt * step as f64;
+            let current_norm = current.norm_l2();
+            assert!(
+                (current_norm - 1f64).abs() < 1e-6,
+                "Norm of state diverged (norm = {current_norm})"
+            );
         }
         out.push_row(current.view()).unwrap();
 
