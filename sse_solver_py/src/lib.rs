@@ -104,10 +104,6 @@ fn solve_sse_euler_bra_ket(
         .unwrap(),
     };
 
-    let path = "results.txt";
-    let mut output = File::create(path)?;
-    let _ = output.write_all(serde_json::to_string(&system).unwrap().as_bytes());
-
     let initial_state = Array1::from(initial_state);
     let out = EulerSolver::solve(&initial_state, &system, n, step, dt);
 

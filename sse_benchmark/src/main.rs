@@ -6,7 +6,10 @@
 
 use ndarray::{linalg::Dot, Array1, Array2, Array3};
 use num_complex::Complex;
-use sse_solver::{BandedArray, DiagonalNoise, EulerSolver, FullNoise, SSESystem, Solver};
+use rand::Rng;
+use sse_solver::{
+    BandedArray, DiagonalNoise, EulerSolver, FullNoise, SSESystem, Solver, StandardComplexNormal,
+};
 extern crate test;
 use std::simd::{prelude::*, StdFloat};
 
@@ -69,10 +72,13 @@ fn euler_solver_benchmark_sparse() {
     };
 
     let hamiltonian = BandedArray::<Complex<f64>>::from_sparse(
-        &Vec::from_iter(
-            (0..3).map(|_| Vec::from_iter(Array1::<Complex<f64>>::ones([initial_state.len()]))),
-        ),
-        &Vec::from_iter(0..3),
+        &Vec::from_iter((0..3).map(|_| {
+            Vec::from_iter(Array1::<Complex<f64>>::from_elem(
+                [initial_state.len()],
+                Complex { re: 1f64, im: 3f64 },
+            ))
+        })),
+        &[0, 3, 90],
         &[initial_state.len(), initial_state.len()],
     );
 
@@ -90,9 +96,10 @@ fn euler_solver_benchmark_sparse() {
             .collect::<Vec<_>>(),
     );
     let system = SSESystem { noise, hamiltonian };
+
     let n = 800;
     let step = 8000;
-    let dt = 0.0001;
+    let dt = 1.25e-17;
     test::black_box(EulerSolver::solve(&initial_state, &system, n, step, dt));
 }
 
@@ -465,6 +472,41 @@ fn banded_array_transposed_dot_benchmark() {
     }
 }
 
+#[allow(dead_code)]
+#[inline(never)]
+fn mul_bench(
+    lhs: Array1<Complex<f64>>,
+    rhs: Array1<Complex<f64>>,
+    n: usize,
+) -> Array1<Complex<f64>> {
+    let mut out = Array1::zeros(lhs.shape()[0]);
+    for _i in 0..n {
+        #[allow(clippy::unit_arg)]
+        test::black_box(out += &(&lhs + &rhs));
+    }
+    out
+}
+
+#[allow(dead_code)]
+fn mul_rand_array() {
+    let rng = rand::thread_rng();
+
+    let lhs: Array1<Complex<f64>> = rng
+        .clone()
+        .sample_iter::<Complex<f64>, _>(StandardComplexNormal)
+        .take(10000)
+        .map(|d| d * Complex { re: 1f64, im: 1f64 })
+        .collect();
+
+    let rhs: Array1<Complex<f64>> = rng
+        .clone()
+        .sample_iter::<Complex<f64>, _>(StandardComplexNormal)
+        .take(10000)
+        .map(|d| d * Complex { re: 1f64, im: 1f64 })
+        .collect();
+
+    test::black_box(mul_bench(lhs, rhs, test::black_box(500000)));
+}
 fn main() {
     euler_solver_benchmark_sparse()
 }

@@ -4,12 +4,14 @@ use ndarray::{linalg::Dot, Array1, Array2, Array3, Axis};
 use num_complex::{Complex, Complex64};
 use rand::prelude::*;
 use rand_distr::{num_traits, StandardNormal};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// Represents an array, stored as a series of (offset) diagonals
 /// Each diagonal stores elements M_{i+offset % `N_0`, i}
 /// length of diagonals is shape[1], with a total of shape[0] offsets
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BandedArray<T> {
     diagonals: Vec<Vec<T>>,
     offsets: Vec<usize>,
@@ -145,6 +147,8 @@ impl<
 /// Represents an array, stored as a series of (offset) diagonals
 /// Each diagonal stores elements M_{i, i+offset % `N_0`}
 /// length of diagonals is shape[0], with a total of shape[1] offsets
+#[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TransposedBandedArray<T> {
     diagonals: Vec<Vec<T>>,
     offsets: Vec<usize>,
@@ -280,7 +284,8 @@ impl<T: System> Solver<T> for EulerSolver {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 struct DiagonalNoiseSource {
     amplitude: Complex<f64>,
     // LHS of the factorized operators.
@@ -349,7 +354,8 @@ impl DiagonalNoiseSource {
 
 /// Represents a noise operator in factorized form
 /// `S_n = A_n |Ket_n> <Bra_n|`
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct DiagonalNoise(Vec<DiagonalNoiseSource>);
 
 impl DiagonalNoise {
@@ -381,6 +387,7 @@ impl DiagonalNoise {
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 struct FullNoiseSource<T: Tensor, U: Tensor> {
     // Uses the convention taken from https://doi.org/10.1103/PhysRevA.66.012108
     // However we multiply L by a factor of i
@@ -460,6 +467,7 @@ impl<T: Dot<Array1<Complex<f64>>, Output = Array1<Complex<f64>>>> Tensor for T {
 /// Represents a noise operator in factorized form
 /// `S_n = A_n |Ket_n> <Bra_n|`
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FullNoise<T: Tensor, U: Tensor>(Vec<FullNoiseSource<T, U>>);
 
 pub struct StandardComplexNormal;
@@ -514,7 +522,7 @@ impl<T: Tensor, U: Tensor> Noise for FullNoise<T, U> {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SSESystem<H: Tensor, N: Noise> {
     pub hamiltonian: H,
     pub noise: N,

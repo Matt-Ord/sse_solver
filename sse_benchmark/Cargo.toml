@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-itertools = "0.12.1"
-matrixmultiply = { version = "0.3.8", features = ["cgemm"] }
 ndarray = { version = "0.15.0" }
 num-complex = "0.4.5"
-sse_solver = { version = "0.1.0", path = "../sse_solver" }
+sse_solver = { version = "0.1.0", path = "../sse_solver", features = ["serde"] }
+rand = "0.8.5"
+rand_distr = "0.4.3"

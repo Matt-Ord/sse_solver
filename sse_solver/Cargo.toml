@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ndarray = "0.15.6"
-num-complex = "0.4.5"
+num-complex = { version = "0.4.5" }
+ndarray = { version = "0.15.6" }
 rand = "0.8.5"
 rand_distr = "0.4.3"
-serde = { version = "1.0.201", features = ["derive"] }
+serde = { version = "1.0.201", features = ["derive"], optional = true }
+
+[features]
+default = []
+serde = ["dep:serde", "num-complex/serde", "ndarray/serde"]
