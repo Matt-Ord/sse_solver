@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.4,<2.0"]
+requires = ["maturin>=1.5,<2.0"]
 build-backend = "maturin"
 
 [project]
@@ -16,7 +16,7 @@ readme = "README.md"
 dynamic = ["version"]
 
 [project.optional-dependencies]
-dev = ["numpy~=1.26.4", "ruff~=0.3.0", "pytest~=8.0.1", "qutip~=5.0.0a2"]
+dev = ["ruff~=0.3.0", "pytest~=8.0.1"]
 
 [tool.ruff]
 unsafe-fixes = true
