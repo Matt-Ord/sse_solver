@@ -1,266 +1,16 @@
 #![warn(clippy::pedantic)]
 
+use distribution::StandardComplexNormal;
 use ndarray::{linalg::Dot, Array1, Array2, Array3, Axis};
 use ndarray_linalg::Norm;
 use num_complex::{Complex, Complex64};
 use rand::prelude::*;
-use rand_distr::{num_traits, StandardNormal};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use sparse::{BandedArray, FactorizedArray, TransposedBandedArray};
 
-/// Represents an array, stored as a series of (offset) diagonals
-/// Each diagonal stores elements M_{i+offset % `N_0`, i}
-/// length of diagonals is shape[1], with a total of shape[0] offsets
-#[derive(Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct BandedArray<T> {
-    diagonals: Vec<Vec<T>>,
-    offsets: Vec<usize>,
-    shape: [usize; 2],
-}
-
-impl<T: Copy> BandedArray<T> {
-    #[must_use]
-    pub fn from_dense(dense: &Array2<T>) -> Self {
-        let offsets = (0..dense.shape()[0]).collect::<Vec<_>>();
-        let diagonals = offsets
-            .iter()
-            .map(|o| {
-                (0..dense.shape()[1])
-                    .map(|i| dense[[(i + o) % dense.shape()[0], i]])
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-
-        BandedArray {
-            diagonals,
-            offsets,
-            shape: [dense.shape()[0], dense.shape()[1]],
-        }
-    }
-    /// # Panics
-    ///
-    /// Will panic if diagonals are not of length shape[1]
-    /// Will panic if len(diagonals) !== len(offsets)
-    #[must_use]
-    pub fn from_sparse(diagonals: &[Vec<T>], offsets: &[usize], shape: &[usize; 2]) -> Self {
-        for d in diagonals {
-            assert_eq!(d.len(), shape[1]);
-        }
-        let diagonals_vec = diagonals.to_vec();
-        let offsets_vec = offsets.to_vec();
-        assert_eq!(diagonals_vec.len(), offsets_vec.len());
-        BandedArray {
-            diagonals: diagonals_vec,
-            offsets: offsets_vec,
-            shape: shape.to_owned(),
-        }
-    }
-
-    #[must_use]
-    pub fn transpose(&self) -> TransposedBandedArray<T> {
-        TransposedBandedArray {
-            diagonals: self.diagonals.clone(),
-            offsets: self.offsets.clone(),
-            shape: [self.shape[1], self.shape[0]],
-        }
-    }
-}
-impl<T: num_complex::ComplexFloat> TransposedBandedArray<T> {
-    fn conj(&self) -> TransposedBandedArray<T> {
-        TransposedBandedArray {
-            diagonals: self
-                .diagonals
-                .iter()
-                .map(|d| d.iter().map(|i| i.conj()).collect())
-                .collect(),
-            offsets: self.offsets.clone(),
-            shape: self.shape,
-        }
-    }
-}
-
-// impl<
-//         T: num_traits::Zero
-//             + Clone
-//             + Copy
-//             + std::ops::AddAssign<<T as std::ops::Mul>::Output>
-//             + std::ops::Mul,
-//     > Dot<Array1<T>> for BandedArray<T>
-// {
-//     type Output = Array1<T>;
-
-//     #[inline]
-//     fn dot(&self, rhs: &Array1<T>) -> Self::Output {
-//         assert!(self.shape[1] == rhs.len());
-//         assert!(self.offsets.len() == self.diagonals.len());
-
-//         let mut out = Array1::zeros(self.shape[0]);
-
-//         for (offset, diagonal) in self.offsets.iter().zip(self.diagonals.iter()) {
-//             for (i, &rhs_val) in rhs.iter().enumerate() {
-//                 let out_idx = (i + offset) % self.shape[0];
-//                 out[out_idx] += diagonal[i] * rhs_val;
-//             }
-//         }
-
-//         out
-//     }
-// }
-
-impl<
-        T: num_traits::Zero
-            + Clone
-            + Copy
-            + std::ops::AddAssign<<T as std::ops::Mul>::Output>
-            + std::ops::Mul,
-    > Dot<Array1<T>> for BandedArray<T>
-{
-    type Output = Array1<T>;
-
-    #[inline]
-    fn dot(&self, rhs: &Array1<T>) -> Self::Output {
-        assert!(self.shape[1] == rhs.len());
-        assert!(self.offsets.len() == self.diagonals.len());
-
-        let mut out = Array1::zeros(self.shape[0]);
-
-        for (offset, diagonal) in self.offsets.iter().zip(self.diagonals.iter()) {
-            let mut iter_elem = diagonal.iter().zip(rhs.iter());
-
-            // Take the first N_0 - offset
-            // These correspond to i=offset..N_0, j=0..N_0-offset
-            (*offset..self.shape[0])
-                .zip(&mut iter_elem)
-                .for_each(|(i, (d, r))| out[i] += *d * *r);
-
-            // In chunks of N_0, starting at N_0-offset
-            // These correspond to i=0..N_0 and some j starting at N_0-offset
-            iter_elem
-                .zip((0..self.shape[0]).cycle())
-                .for_each(|((d, r), i)| out[i] += *d * *r);
-        }
-
-        out
-    }
-}
-
-/// Represents an array, stored as a series of (offset) diagonals
-/// Each diagonal stores elements M_{i, i+offset % `N_0`}
-/// length of diagonals is shape[0], with a total of shape[1] offsets
-#[derive(Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct TransposedBandedArray<T> {
-    diagonals: Vec<Vec<T>>,
-    offsets: Vec<usize>,
-    shape: [usize; 2],
-}
-// impl<
-//         T: num_traits::Zero
-//             + Clone
-//             + Copy
-//             + std::ops::AddAssign<<T as std::ops::Mul>::Output>
-//             + std::ops::Mul,
-//     > Dot<Array1<T>> for TransposedBandedArray<T>
-// {
-//     type Output = Array1<T>;
-
-//     #[inline]
-//     fn dot(&self, rhs: &Array1<T>) -> Self::Output {
-//         assert!(self.shape[1] == rhs.len());
-//         assert!(self.offsets.len() == self.diagonals.len());
-
-//         let mut out = Array1::zeros(self.shape[0]);
-
-//         for (offset, diagonal) in self.offsets.iter().zip(self.diagonals.iter()) {
-//             for (i, &diag_val) in diagonal.iter().enumerate() {
-//                 let rhs_idx = (i + offset) % self.shape[1];
-//                 out[i] += diag_val * rhs[rhs_idx];
-//             }
-//         }
-
-//         out
-//     }
-// }
-
-impl<
-        T: num_traits::Zero
-            + Clone
-            + Copy
-            + std::ops::AddAssign<<T as std::ops::Mul>::Output>
-            + std::ops::Mul,
-    > Dot<Array1<T>> for TransposedBandedArray<T>
-{
-    type Output = Array1<T>;
-
-    #[inline]
-    fn dot(&self, rhs: &Array1<T>) -> Self::Output {
-        assert!(self.shape[1] == rhs.len());
-        assert!(self.offsets.len() == self.diagonals.len());
-
-        let mut out = Array1::zeros(self.shape[0]);
-
-        for (offset, diagonal) in self.offsets.iter().zip(self.diagonals.iter()) {
-            let mut iter_elem = diagonal.iter().zip(out.iter_mut());
-
-            // Take the first N_1 - offset
-            // These correspond to j=offset..N_1, i=0..N_0-offset
-            (*offset..self.shape[1])
-                .zip(&mut iter_elem)
-                .for_each(|(i, (d, o))| *o += *d * rhs[i]);
-
-            // In chunks of N_0, starting at N_0-offset
-            // These correspond to i=0..N_0 and some j
-            iter_elem
-                .zip((0..self.shape[1]).cycle())
-                .for_each(|((d, o), i)| *o += *d * rhs[i]);
-        }
-
-        out
-    }
-}
-
-#[derive(Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct FactorizedArray<T> {
-    amplitude: T,
-    // LHS of the factorized operators.
-    // This is in 'bra' form, so bra.dot(state) === <bra|state>
-    bra: Array1<T>,
-    // RHS of the factorized operators.
-    // This is in 'ket' form, so conj(ket).dot(state) === <ket|state>
-    ket: Array1<T>,
-}
-impl Dot<Array1<Complex<f64>>> for FactorizedArray<Complex<f64>> {
-    type Output = Array1<Complex<f64>>;
-
-    #[inline]
-    fn dot(&self, rhs: &Array1<Complex<f64>>) -> Self::Output {
-        let applied_bra = self.bra.dot(rhs);
-
-        &self.ket * (self.amplitude * applied_bra)
-    }
-}
-
-impl<T: num_complex::ComplexFloat> FactorizedArray<T> {
-    fn conj(&self) -> FactorizedArray<T> {
-        FactorizedArray {
-            amplitude: self.amplitude.conj(),
-            bra: self.bra.clone(),
-            ket: self.ket.clone(),
-        }
-    }
-}
-
-impl<T: Clone> FactorizedArray<T> {
-    fn transpose(&self) -> FactorizedArray<T> {
-        FactorizedArray {
-            amplitude: self.amplitude.clone(),
-            ket: self.bra.clone(),
-            bra: self.ket.clone(),
-        }
-    }
-}
+pub mod distribution;
+pub mod sparse;
 
 pub trait System {
     fn coherent(&self, state: &Array1<Complex<f64>>, t: f64, dt: f64) -> Array1<Complex<f64>>;
@@ -310,6 +60,7 @@ pub trait Solver<T: System> {
             out.push_row(current.view()).unwrap();
             current = Self::integrate(&current, system, current_t, step, dt);
             current_t += dt * step as f64;
+            // TODO: we maybe shouldn't be doing this ...
             current /= Complex {
                 re: current.norm_l2(),
                 im: 0f64,
@@ -429,11 +180,7 @@ impl FullNoise<FactorizedArray<Complex<f64>>, FactorizedArray<Complex<f64>>> {
         let sources = amplitudes
             .into_iter()
             .zip(bra.axis_iter(Axis(0)).zip(ket.axis_iter(Axis(0))))
-            .map(|(a, (b, k))| FactorizedArray {
-                amplitude: a,
-                bra: b.to_owned(),
-                ket: k.to_owned(),
-            })
+            .map(|(a, (b, k))| FactorizedArray::from_bra_ket(a, b.to_owned(), k.to_owned()))
             .map(|operator| FullNoiseSource {
                 conjugate_operator: operator.conj().transpose(),
                 operator: operator.clone(),
@@ -451,26 +198,6 @@ impl<T: Dot<Array1<Complex<f64>>, Output = Array1<Complex<f64>>>> Tensor for T {
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FullNoise<T: Tensor, U: Tensor>(Vec<FullNoiseSource<T, U>>);
-
-pub struct StandardComplexNormal;
-
-impl Distribution<Complex<f32>> for StandardComplexNormal {
-    #[inline]
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Complex<f32> {
-        let re = rng.sample::<f32, StandardNormal>(StandardNormal) / std::f32::consts::SQRT_2;
-        let im = rng.sample::<f32, StandardNormal>(StandardNormal) / std::f32::consts::SQRT_2;
-        Complex { re, im }
-    }
-}
-
-impl Distribution<Complex<f64>> for StandardComplexNormal {
-    #[inline]
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Complex<f64> {
-        let re = rng.sample::<f64, StandardNormal>(StandardNormal) / std::f64::consts::SQRT_2;
-        let im = rng.sample::<f64, StandardNormal>(StandardNormal) / std::f64::consts::SQRT_2;
-        Complex { re, im }
-    }
-}
 
 impl<T: Tensor, U: Tensor> Noise for FullNoise<T, U> {
     #[inline]

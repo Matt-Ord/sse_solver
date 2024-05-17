@@ -4,12 +4,17 @@
 #![feature(portable_simd)]
 #![feature(slice_flatten)]
 
-use ndarray::{linalg::Dot, Array1, Array2, Array3};
+use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex;
 use rand::Rng;
-use sse_solver::{BandedArray, EulerSolver, FullNoise, SSESystem, Solver, StandardComplexNormal};
+use sse_solver::{
+    distribution::StandardComplexNormal, sparse::BandedArray, EulerSolver, FullNoise, SSESystem,
+    Solver,
+};
 extern crate test;
 use std::simd::{prelude::*, StdFloat};
+
+use ndarray::linalg::Dot;
 
 #[allow(dead_code)]
 fn euler_solver_benchmark() {
@@ -449,7 +454,6 @@ fn banded_array_dot_benchmark() {
         test::black_box(&a.dot(&b));
     }
 }
-
 #[allow(dead_code)]
 fn banded_array_transposed_dot_benchmark() {
     let n_bands = 3;
