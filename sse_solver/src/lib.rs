@@ -219,6 +219,49 @@ impl<
         out
     }
 }
+
+#[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct FactorizedArray<T> {
+    amplitude: T,
+    // LHS of the factorized operators.
+    // This is in 'bra' form, so bra.dot(state) === <bra|state>
+    bra: Array1<T>,
+    // RHS of the factorized operators.
+    // This is in 'ket' form, so conj(ket).dot(state) === <ket|state>
+    ket: Array1<T>,
+}
+impl Dot<Array1<Complex<f64>>> for FactorizedArray<Complex<f64>> {
+    type Output = Array1<Complex<f64>>;
+
+    #[inline]
+    fn dot(&self, rhs: &Array1<Complex<f64>>) -> Self::Output {
+        let applied_bra = self.bra.dot(rhs);
+
+        &self.ket * (self.amplitude * applied_bra)
+    }
+}
+
+impl<T: num_complex::ComplexFloat> FactorizedArray<T> {
+    fn conj(&self) -> FactorizedArray<T> {
+        FactorizedArray {
+            amplitude: self.amplitude.conj(),
+            bra: self.bra.clone(),
+            ket: self.ket.clone(),
+        }
+    }
+}
+
+impl<T: Clone> FactorizedArray<T> {
+    fn transpose(&self) -> FactorizedArray<T> {
+        FactorizedArray {
+            amplitude: self.amplitude.clone(),
+            ket: self.bra.clone(),
+            bra: self.ket.clone(),
+        }
+    }
+}
+
 pub trait System {
     fn coherent(&self, state: &Array1<Complex<f64>>, t: f64, dt: f64) -> Array1<Complex<f64>>;
 
@@ -289,23 +332,6 @@ impl<T: System> Solver<T> for EulerSolver {
     }
 }
 
-#[derive(Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-struct DiagonalNoiseSource {
-    amplitude: Complex<f64>,
-    // LHS of the factorized operators.
-    // This is in 'bra' form, so bra.dot(state) === <bra|state>
-    bra: Array1<Complex<f64>>,
-    // This is in 'ket' form, so conj(conj_bra).dot(state) === <bra|state>
-    conj_bra: Array1<Complex<f64>>,
-    // RHS of the factorized operators.
-    // This is in 'ket' form, so conj(ket).dot(state) === <ket|state>
-    ket: Array1<Complex<f64>>,
-    // RHS of the factorized operators.
-    // This is in 'bra' form, so conj_ket.dot(state) === <ket|state>
-    conj_ket: Array1<Complex<f64>>,
-}
-
 struct EulerStep {
     diagonal_amplitude: Complex<f64>,
     off_diagonal: Array1<Complex<f64>>,
@@ -315,79 +341,6 @@ impl EulerStep {
     fn resolve(self, state: &Array1<Complex<f64>>) -> Array1<Complex<f64>> {
         // Also add on initial state ...
         self.off_diagonal + ((self.diagonal_amplitude + 1f64) * state)
-    }
-}
-impl DiagonalNoiseSource {
-    #[inline]
-    fn apply_bra_to(&self, state: &Array1<Complex<f64>>) -> Complex<f64> {
-        self.bra.dot(state)
-    }
-
-    #[inline]
-    fn apply_ket_to(&self, state: &Array1<Complex<f64>>) -> Complex<f64> {
-        self.conj_ket.dot(state)
-    }
-    #[inline]
-    fn accumulate_euler_step(&self, step: &mut EulerStep, state: &Array1<Complex<f64>>, dt: f64) {
-        let mut rng = rand::thread_rng();
-        let noise: Complex<f64> = rng.sample(StandardComplexNormal);
-
-        let amplitude = &self.amplitude;
-        let applied_bra = self.apply_bra_to(state);
-        let applied_ket = self.apply_ket_to(state);
-        let expectation = (applied_bra * applied_ket.conj() * amplitude).re;
-
-        assert!(self.ket.len() == self.conj_bra.len());
-        assert!(step.off_diagonal.len() == self.conj_bra.len());
-
-        let prefactor = applied_bra * dt;
-
-        step.off_diagonal += &((&self.ket * (prefactor * (noise + expectation)))
-            - (&self.conj_bra * (prefactor * (0.5 * amplitude.norm_sqr()))));
-
-        // TODO: this may be quicker if we can do unchecked indexing
-        // for i in 0..step.off_diagonal.len() {
-        //     let k = self.ket[i];
-        //     let b = self.conj_bra[i];
-        //     step.off_diagonal[i] +=
-        //         (k * (noise + expectation) - b * (0.5 * amplitude.norm_sqr())) * prefactor;
-        // }
-
-        step.diagonal_amplitude -= (expectation * (0.5 * expectation + noise)) * dt;
-    }
-}
-
-/// Represents a noise operator in factorized form
-/// `S_n = A_n |Ket_n> <Bra_n|`
-#[derive(Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct DiagonalNoise(Vec<DiagonalNoiseSource>);
-
-impl DiagonalNoise {
-    #[must_use]
-    pub fn amplitudes(&self) -> Array1<Complex<f64>> {
-        self.0.iter().map(|s| s.amplitude).collect()
-    }
-    #[must_use]
-    pub fn from_bra_ket(
-        amplitudes: Array1<Complex<f64>>,
-        bra: &Array2<Complex<f64>>,
-        ket: &Array2<Complex<f64>>,
-    ) -> Self {
-        let mut sources = Vec::with_capacity(amplitudes.len());
-
-        amplitudes
-            .into_iter()
-            .zip(bra.axis_iter(Axis(0)).zip(ket.axis_iter(Axis(0))))
-            .map(|(a, (b, k))| DiagonalNoiseSource {
-                amplitude: a,
-                conj_bra: b.map(num_complex::Complex::conj),
-                conj_ket: k.map(num_complex::Complex::conj),
-                bra: b.to_owned(),
-                ket: k.to_owned(),
-            })
-            .for_each(|s| sources.push(s));
-        Self(sources)
     }
 }
 
@@ -466,6 +419,30 @@ impl FullNoise<BandedArray<Complex<f64>>, TransposedBandedArray<Complex<f64>>> {
     }
 }
 
+impl FullNoise<FactorizedArray<Complex<f64>>, FactorizedArray<Complex<f64>>> {
+    #[must_use]
+    pub fn from_bra_ket(
+        amplitudes: Array1<Complex<f64>>,
+        bra: &Array2<Complex<f64>>,
+        ket: &Array2<Complex<f64>>,
+    ) -> Self {
+        let sources = amplitudes
+            .into_iter()
+            .zip(bra.axis_iter(Axis(0)).zip(ket.axis_iter(Axis(0))))
+            .map(|(a, (b, k))| FactorizedArray {
+                amplitude: a,
+                bra: b.to_owned(),
+                ket: k.to_owned(),
+            })
+            .map(|operator| FullNoiseSource {
+                conjugate_operator: operator.conj().transpose(),
+                operator: operator.clone(),
+            })
+            .collect::<Vec<_>>();
+        Self(sources)
+    }
+}
+
 pub trait Tensor: Dot<Array1<Complex<f64>>, Output = Array1<Complex<f64>>> {}
 
 impl<T: Dot<Array1<Complex<f64>>, Output = Array1<Complex<f64>>>> Tensor for T {}
@@ -492,22 +469,6 @@ impl Distribution<Complex<f64>> for StandardComplexNormal {
         let re = rng.sample::<f64, StandardNormal>(StandardNormal) / std::f64::consts::SQRT_2;
         let im = rng.sample::<f64, StandardNormal>(StandardNormal) / std::f64::consts::SQRT_2;
         Complex { re, im }
-    }
-}
-
-impl Noise for DiagonalNoise {
-    #[inline]
-    fn euler_step(&self, state: &Array1<Complex<f64>>, dt: f64) -> Array1<Complex<f64>> {
-        let mut step = EulerStep {
-            diagonal_amplitude: Complex64::default(),
-            off_diagonal: Array1::zeros(state.shape()[0]),
-        };
-
-        for source in &self.0 {
-            source.accumulate_euler_step(&mut step, state, dt);
-        }
-
-        step.resolve(state)
     }
 }
 
@@ -550,17 +511,21 @@ impl<H: Tensor, N: Noise> System for SSESystem<H, N> {
 
 #[cfg(test)]
 mod tests {
+    type DiagonalNoise = FullNoise<FactorizedArray<Complex<f64>>, FactorizedArray<Complex<f64>>>;
 
     use ndarray::{linalg::Dot, s, Array1, Array2, Array3};
     use num_complex::{Complex, ComplexFloat};
     use rand::Rng;
 
     use crate::{
-        BandedArray, DiagonalNoise, EulerSolver, FullNoise, SSESystem, Solver,
+        BandedArray, EulerSolver, FactorizedArray, FullNoise, SSESystem, Solver,
         StandardComplexNormal,
     };
 
-    fn get_random_noise(n_operators: usize, n_states: usize) -> DiagonalNoise {
+    fn get_random_noise(
+        n_operators: usize,
+        n_states: usize,
+    ) -> FullNoise<FactorizedArray<Complex<f64>>, FactorizedArray<Complex<f64>>> {
         let rng = rand::thread_rng();
         // let noise: Complex<f64> = rng.sample(StandardComplexNormal);
         let amplitudes = Array1::from_iter(
@@ -584,7 +549,7 @@ mod tests {
                 .collect(),
         )
         .unwrap();
-        DiagonalNoise::from_bra_ket(amplitudes, bra, ket)
+        FullNoise::from_bra_ket(amplitudes, bra, ket)
     }
 
     fn get_random_system(
@@ -677,7 +642,9 @@ mod tests {
                 .0
                 .iter()
                 .flat_map(|s| -> Vec<Complex<f64>> {
-                    compute_outer_product(&s.ket, &s.bra).into_iter().collect()
+                    compute_outer_product(&s.operator.ket, &s.operator.bra)
+                        .into_iter()
+                        .collect()
                 })
                 .collect(),
         )
