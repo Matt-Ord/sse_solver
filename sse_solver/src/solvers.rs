@@ -91,7 +91,7 @@ impl<T: SDESystem> Solver<T> for MilstenSolver {
 
         let rng = rand::thread_rng();
         let sqrt_dt = dt.sqrt();
-        let one_div_sqrt_dt = 1f64 / sqrt_dt;
+
         let noise = rng
             .sample_iter::<Complex<_>, _>(StandardComplexNormal)
             .map(|d| d * sqrt_dt)
@@ -103,7 +103,7 @@ impl<T: SDESystem> Solver<T> for MilstenSolver {
         // Y_k(n+1) = Y_k(n) + a dt + \sum_j \frac{1}{2}  b^j(t, Y(n))_k dW^j - 1/sqrt(dt)(b^j(t, Y(n))_k)
         let simple_step = SDEStep {
             coherent: Complex { re: dt, im: 0f64 },
-            incoherent: noise.iter().map(|d| (d / 2f64) - one_div_sqrt_dt).collect(),
+            incoherent: noise.iter().map(|d| (d / 2f64) - sqrt_dt).collect(),
         };
         T::apply_step_from_parts(&mut out, &parts, &simple_step);
 
@@ -132,7 +132,7 @@ impl<T: SDESystem> Solver<T> for MilstenSolver {
             &mut out,
             &(0..system.n_incoherent())
                 .map(|_| Complex {
-                    re: one_div_sqrt_dt,
+                    re: sqrt_dt,
                     im: 0f64,
                 })
                 .collect::<Vec<_>>(),
