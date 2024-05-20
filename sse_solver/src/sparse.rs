@@ -1,6 +1,8 @@
 use ndarray::{linalg::Dot, Array1, Array2};
 use num_complex::Complex;
 use rand_distr::num_traits;
+
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// Represents an array, stored as a series of (offset) diagonals
