@@ -1,11 +1,11 @@
-use std::{fs::File, io::Write};
-
 use ndarray::{Array1, Array2, Array3};
-use sse_solver::{BandedArray, FullNoise};
-// use ndarray_linalg::Scalar;
-use ::sse_solver::{DiagonalNoise, EulerSolver, SSESystem, Solver};
 use num_complex::Complex;
 use pyo3::{exceptions::PyAssertionError, prelude::*};
+use sse_solver::{
+    solvers::{EulerSolver, MilstenSolver, Solver},
+    sparse::BandedArray,
+    sse_system::{FullNoise, SSESystem},
+};
 
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
@@ -78,6 +78,37 @@ fn solve_sse_euler_banded(
 
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
+fn solve_sse_milsten_banded(
+    initial_state: Vec<Complex<f64>>,
+    hamiltonian_diagonal: Vec<Vec<Complex<f64>>>,
+    hamiltonian_offset: Vec<usize>,
+    operators_diagonals: Vec<Vec<Vec<Complex<f64>>>>,
+    operators_offsets: Vec<Vec<usize>>,
+    n: usize,
+    step: usize,
+    dt: f64,
+) -> PyResult<Vec<Complex<f64>>> {
+    let shape = [initial_state.len(), initial_state.len()];
+    let noise = FullNoise::from_banded(
+        &operators_diagonals
+            .iter()
+            .zip(operators_offsets.iter())
+            .map(|(diagonals, offsets)| BandedArray::from_sparse(diagonals, offsets, &shape))
+            .collect::<Vec<_>>(),
+    );
+    let system = SSESystem {
+        noise,
+        hamiltonian: BandedArray::from_sparse(&hamiltonian_diagonal, &hamiltonian_offset, &shape),
+    };
+
+    let initial_state = Array1::from(initial_state);
+    let out = MilstenSolver::solve(&initial_state, &system, n, step, dt);
+
+    Ok(out.into_raw_vec())
+}
+
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
 fn solve_sse_euler_bra_ket(
     initial_state: Vec<Complex<f64>>,
     hamiltonian: Vec<Complex<f64>>,
@@ -90,7 +121,8 @@ fn solve_sse_euler_bra_ket(
 ) -> PyResult<Vec<Complex<f64>>> {
     let amplitudes = Array1::from_vec(amplitudes);
     let n_amplitudes = amplitudes.len();
-    let noise = DiagonalNoise::from_bra_ket(
+
+    let noise = FullNoise::from_bra_ket(
         amplitudes,
         &Array2::from_shape_vec((n_amplitudes, initial_state.len()), bra).unwrap(),
         &Array2::from_shape_vec((n_amplitudes, initial_state.len()), ket).unwrap(),
@@ -116,5 +148,6 @@ fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_sse_euler, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_euler_bra_ket, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_euler_banded, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_sse_milsten_banded, m)?)?;
     Ok(())
 }

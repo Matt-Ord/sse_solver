@@ -8,8 +8,10 @@ use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex;
 use rand::Rng;
 use sse_solver::{
-    distribution::StandardComplexNormal, sparse::BandedArray, EulerSolver, FullNoise, SSESystem,
-    Solver,
+    distribution::StandardComplexNormal,
+    solvers::{EulerSolver, Solver},
+    sparse::BandedArray,
+    sse_system::{FullNoise, SSESystem},
 };
 extern crate test;
 use std::simd::{prelude::*, StdFloat};
