@@ -74,13 +74,13 @@ def test_same_as_qutip(
 ) -> None:
     initial_state = np.zeros_like(diagonal_hamiltonian[0])
     initial_state[0] = 1
-    E = np.max(diagonal_hamiltonian[0, 0]).real
-    dt = np.pi / (1000 * E)
-    N = 10 * 1000
+    e = np.max(diagonal_hamiltonian[0, 0]).real
+    dt = np.pi / (1000 * e)
+    n = 10 * 1000
 
-    times = np.linspace(0, N * dt, N + 1, endpoint=True)
+    times = np.linspace(0, n * dt, n + 1, endpoint=True)
 
-    np.divmod(np.pi / E, dt)
+    np.divmod(np.pi / e, dt)
     out = qutip.ssesolve(
         qutip.Qobj(diagonal_hamiltonian),
         qutip.Qobj(initial_state),

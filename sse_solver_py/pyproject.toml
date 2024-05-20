@@ -26,7 +26,7 @@ select = ["ALL"]
 ignore = ["D103", "D104", "D100", "D417", "TD003", "TD002"]
 unfixable = ["ERA001", "T201"]
 
-[tool.ruff.extend-per-file-ignores]
+[tool.ruff.lint.extend-per-file-ignores]
 "examples/**/*" = ["T201", "INP001"]
 "tests/**/*" = []
 
