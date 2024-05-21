@@ -34,17 +34,12 @@ impl Distribution<Array2<f64>> for VMatrix {
         let mut out = Array2::zeros([self.n, self.n]);
 
         let options = [self.dt, -self.dt];
-        rng.gen_range(0..2);
+
         for i in 0..self.n {
             for j in 0..i {
                 let choice = rng.gen_bool(0.5);
-                if choice {
-                    out[[i, j]] = options[0];
-                    out[[j, i]] = options[1];
-                } else {
-                    out[[i, j]] = options[1];
-                    out[[j, i]] = options[0];
-                }
+                out[[i, j]] = if choice { options[0] } else { options[1] };
+                out[[j, i]] = if choice { options[1] } else { options[0] };
             }
             out[[i, i]] = options[1];
         }

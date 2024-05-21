@@ -222,13 +222,13 @@ impl<T: SDESystem> Solver<T> for Order2WeakSolver {
         let u_plus_supporting_states = operators
             .incoherent
             .iter()
-            .map(|incoherent| state + incoherent * sqrt_dt)
+            .map(|incoherent| state + (incoherent * sqrt_dt))
             .collect::<Vec<_>>();
 
         let u_minus_supporting_states = operators
             .incoherent
             .iter()
-            .map(|incoherent| state - incoherent * sqrt_dt)
+            .map(|incoherent| state - (incoherent * sqrt_dt))
             .collect::<Vec<_>>();
 
         // Calculate the final state
@@ -255,7 +255,7 @@ impl<T: SDESystem> Solver<T> for Order2WeakSolver {
                 },
                 incoherent: noise
                     .iter()
-                    .map(|dw| dw * ((2 - system.n_incoherent()) as f64))
+                    .map(|dw| 0.5 * dw * ((2 - system.n_incoherent()) as f64))
                     .collect(),
             },
         );
@@ -265,7 +265,7 @@ impl<T: SDESystem> Solver<T> for Order2WeakSolver {
             system.apply_incoherent_step(
                 &mut out,
                 j,
-                0.25f64 * (dwj + ((dwj * dwj) - dt) / sqrt_dt),
+                0.25f64 * (dwj + (((dwj * dwj) - dt) / sqrt_dt)),
                 &r_plus_supporting_state,
                 t,
             );
@@ -278,7 +278,7 @@ impl<T: SDESystem> Solver<T> for Order2WeakSolver {
             system.apply_incoherent_step(
                 &mut out,
                 j,
-                0.25f64 * (dwj - ((dwj * dwj) - dt) / sqrt_dt),
+                0.25f64 * (dwj - (((dwj * dwj) - dt) / sqrt_dt)),
                 &r_minus_supporting_state,
                 t,
             );
