@@ -15,120 +15,121 @@ pub struct SDEOperators {
 #[allow(clippy::module_name_repetitions)]
 pub trait SDESystem {
     /// Type used to store a cache of 'Parts' required to calculate a SDE step.
-    type Parts: Into<Self::IncoherentParts> + Into<Self::CoherentParts>;
+    type Parts<'a>: Into<Self::IncoherentParts<'a>> + Into<Self::CoherentParts<'a>>;
 
     /// Get the parts used to calculate an SDE step.
     /// This is useful if multiple separate steps are required, ie for supporting value calculations
-    fn get_parts(&self, state: &Array1<Complex<f64>>, t: f64) -> Self::Parts;
+    fn get_parts<'a>(&self, state: &'a Array1<Complex<f64>>, t: f64) -> Self::Parts<'a>;
 
     /// Get the resulting state after the given 'step' has been performed
     #[inline]
-    fn apply_step(
+    fn get_step(
         &self,
-        out: &mut Array1<Complex<f64>>,
         step: &SDEStep,
         state: &Array1<Complex<f64>>,
         t: f64,
-    ) {
+    ) -> Array1<Complex<f64>> {
         let parts = self.get_parts(state, t);
-        Self::apply_step_from_parts(out, &parts, step);
+        Self::get_step_from_parts(&parts, step)
     }
 
     /// Get the resulting state after the given 'step' has been performed
-    fn apply_step_from_parts(out: &mut Array1<Complex<f64>>, parts: &Self::Parts, step: &SDEStep);
+    fn get_step_from_parts(parts: &Self::Parts<'_>, step: &SDEStep) -> Array1<Complex<f64>>;
 
     /// Type used to store a cache of 'Parts' required to calculate a SDE step involving only the incoherent term.
-    type IncoherentParts;
+    type IncoherentParts<'a>;
 
     /// Type used to store a cache of a singel part. required to calculate a SDE step involving only a single incoherent term.
-    type IncoherentPart;
+    type IncoherentPart<'a>;
 
     /// Get the parts used to calculate an SDE step.
     /// This is useful if multiple separate steps are required, ie for supporting value calculations
-    fn get_incoherent_parts(&self, state: &Array1<Complex<f64>>, t: f64) -> Self::IncoherentParts;
+    fn get_incoherent_parts<'a>(
+        &self,
+        state: &'a Array1<Complex<f64>>,
+        t: f64,
+    ) -> Self::IncoherentParts<'a>;
 
     /// Get the resulting state after the given 'step' has been performed
     #[inline]
-    fn apply_incoherent_steps(
+    fn get_incoherent_steps(
         &self,
-        out: &mut Array1<Complex<f64>>,
         incoherent_step: &[Complex<f64>],
         state: &Array1<Complex<f64>>,
         t: f64,
-    ) {
+    ) -> Array1<Complex<f64>> {
         let parts = self.get_incoherent_parts(state, t);
-        Self::apply_incoherent_steps_from_parts(out, &parts, incoherent_step);
+        Self::get_incoherent_steps_from_parts(&parts, incoherent_step)
     }
 
     /// Get the resulting state after the given 'step' has been performed
     /// Involving only incoherent terms
-    fn apply_incoherent_steps_from_parts(
-        out: &mut Array1<Complex<f64>>,
-        parts: &Self::IncoherentParts,
+    fn get_incoherent_steps_from_parts(
+        parts: &Self::IncoherentParts<'_>,
         incoherent_step: &[Complex<f64>],
-    );
+    ) -> Array1<Complex<f64>>;
 
     /// Get the parts used to calculate an SDE step.
     /// This is useful if multiple separate steps are required, ie for supporting value calculations
-    fn get_incoherent_part(
+    fn get_incoherent_part<'a>(
         &self,
         idx: usize,
-        state: &Array1<Complex<f64>>,
+        state: &'a Array1<Complex<f64>>,
         t: f64,
-    ) -> Self::IncoherentPart;
+    ) -> Self::IncoherentPart<'a>;
 
     /// Get the resulting state after the given 'step' has been performed
     #[inline]
-    fn apply_incoherent_step(
+    fn get_incoherent_step(
         &self,
-        out: &mut Array1<Complex<f64>>,
         idx: usize,
         incoherent_step: Complex<f64>,
         state: &Array1<Complex<f64>>,
         t: f64,
-    ) {
+    ) -> Array1<Complex<f64>> {
         let parts = self.get_incoherent_part(idx, state, t);
-        Self::apply_incoherent_step_from_part(out, &parts, incoherent_step);
+        Self::get_incoherent_step_from_part(&parts, incoherent_step)
     }
 
     /// Get the resulting state after the given 'step' has been performed
     /// Involving only incoherent terms
-    fn apply_incoherent_step_from_part(
-        out: &mut Array1<Complex<f64>>,
-        part: &Self::IncoherentPart,
+    fn get_incoherent_step_from_part(
+        part: &Self::IncoherentPart<'_>,
         incoherent_step: Complex<f64>,
-    );
+    ) -> Array1<Complex<f64>>;
 
     /// Type used to store a cache of 'Parts' required to calculate a SDE step involving only the incoherent term.
-    type CoherentParts;
+    type CoherentParts<'a>;
 
     /// Get the parts used to calculate an SDE step.
     /// This is useful if multiple separate steps are required, ie for supporting value calculations
-    fn get_coherent_parts(&self, state: &Array1<Complex<f64>>, t: f64) -> Self::CoherentParts;
+    fn get_coherent_parts<'a>(
+        &self,
+        state: &'a Array1<Complex<f64>>,
+        t: f64,
+    ) -> Self::CoherentParts<'a>;
 
     /// Get the resulting state after the given 'step' has been performed
     #[inline]
-    fn apply_coherent_step(
+    fn get_coherent_step(
         &self,
-        out: &mut Array1<Complex<f64>>,
         coherent_step: Complex<f64>,
         state: &Array1<Complex<f64>>,
         t: f64,
-    ) {
+    ) -> Array1<Complex<f64>> {
         let parts = self.get_coherent_parts(state, t);
-        Self::apply_coherent_step_from_parts(out, &parts, coherent_step);
+        Self::get_coherent_step_from_parts(&parts, coherent_step)
     }
 
     /// Get the resulting state after the given 'step' has been performed
     /// Involving only coherent terms
-    fn apply_coherent_step_from_parts(
-        out: &mut Array1<Complex<f64>>,
-        parts: &Self::CoherentParts,
+    fn get_coherent_step_from_parts(
+        parts: &Self::CoherentParts<'_>,
         coherent_step: Complex<f64>,
-    );
+    ) -> Array1<Complex<f64>>;
 
     /// The total number of incoherent terms
     fn n_incoherent(&self) -> usize;
 
-    fn operators_from_parts(&self, parts: &Self::Parts) -> SDEOperators;
+    fn operators_from_parts(&self, parts: &Self::Parts<'_>) -> SDEOperators;
 }

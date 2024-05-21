@@ -65,9 +65,7 @@ impl<T: SDESystem> Solver<T> for EulerSolver {
                 .collect(),
         };
 
-        let mut out = state.to_owned();
-        system.apply_step(&mut out, &step, state, t);
-        out
+        state + system.get_step(&step, state, t)
     }
 }
 
@@ -112,7 +110,7 @@ impl<T: SDESystem> Solver<T> for MilstenSolver {
             coherent: Complex { re: dt, im: 0f64 },
             incoherent: noise.iter().map(|d| 0.5f64 * (d + sqrt_dt)).collect(),
         };
-        T::apply_step_from_parts(&mut out, &parts, &simple_step);
+        out += &T::get_step_from_parts(&parts, &simple_step);
 
         // Parts for the second supporting value required to calculate b'b term
         // according to eq 11.1.4 in <https://doi.org/10.1007/978-3-662-12616-5>
@@ -128,15 +126,10 @@ impl<T: SDESystem> Solver<T> for MilstenSolver {
                 })
                 .collect(),
         };
-        let mut second_supporting_state = state.to_owned();
-        T::apply_step_from_parts(
-            &mut second_supporting_state,
-            &parts,
-            &second_supporting_step,
-        );
+        let second_supporting_state =
+            state + T::get_step_from_parts(&parts, &second_supporting_step);
         // Add in the contribution to bb' from this supporting state (1/sqrt(dt) b(\bar{Y}))
-        system.apply_incoherent_steps(
-            &mut out,
+        out += &system.get_incoherent_steps(
             &(0..system.n_incoherent())
                 .map(|_| Complex {
                     re: -0.5f64 * sqrt_dt,
@@ -155,10 +148,9 @@ impl<T: SDESystem> Solver<T> for MilstenSolver {
             coherent: Complex { re: dt, im: 0f64 },
             incoherent: noise.iter().map(|d| (d + 0.5f64 * sqrt_dt)).collect(),
         };
-        let mut first_supporting_state = state.to_owned();
-        T::apply_step_from_parts(&mut first_supporting_state, &parts, &first_supporting_step);
-        system.apply_incoherent_steps(
-            &mut first_supporting_state,
+        let mut first_supporting_state =
+            state + T::get_step_from_parts(&parts, &first_supporting_step);
+        first_supporting_state += &system.get_incoherent_steps(
             &(0..system.n_incoherent())
                 .map(|_| Complex {
                     re: -0.5f64 * sqrt_dt,
@@ -171,8 +163,7 @@ impl<T: SDESystem> Solver<T> for MilstenSolver {
 
         // Add in the parts from the first supporting state \bar{Y}(n)
         // \frac{1}{2} \sum_j (b^j(t, \bar{Y}(n))_k)dW^j
-        system.apply_incoherent_steps(
-            &mut out,
+        out += &system.get_incoherent_steps(
             &noise.iter().map(|d| 0.5f64 * d).collect::<Vec<_>>(),
             &first_supporting_state,
             t,
@@ -182,11 +173,10 @@ impl<T: SDESystem> Solver<T> for MilstenSolver {
     }
 }
 
-/// See 15.1.3
+/// See 15.1.3, although there is a typo if one compares to 15.4.13
 pub struct Order2ExplicitWeakSolver {}
 
 impl<T: SDESystem> Solver<T> for Order2ExplicitWeakSolver {
-    #[allow(clippy::too_many_lines)]
     fn step(state: &Array1<Complex<f64>>, system: &T, t: f64, dt: f64) -> Array1<Complex<f64>> {
         let sqrt_dt = dt.sqrt();
 
@@ -211,40 +201,14 @@ impl<T: SDESystem> Solver<T> for Order2ExplicitWeakSolver {
             incoherent: noise,
         };
 
-        let mut y_supporting_state = state.to_owned();
-        T::apply_step_from_parts(&mut y_supporting_state, &parts, &y_supporting_step);
+        let y_supporting_state = state + T::get_step_from_parts(&parts, &y_supporting_step);
         let noise = y_supporting_step.incoherent;
-
-        let operators = system.operators_from_parts(&parts);
-        let r_plus_supporting_states = operators
-            .incoherent
-            .iter()
-            .map(|incoherent| state + (&operators.coherent * dt) + (incoherent * sqrt_dt));
-
-        let r_minus_supporting_states = operators
-            .incoherent
-            .iter()
-            .map(|incoherent| state + (&operators.coherent * dt) - (incoherent * sqrt_dt));
-
-        //TODO maybe r from u to save time
-        let u_plus_supporting_states = operators
-            .incoherent
-            .iter()
-            .map(|incoherent| state + (incoherent * sqrt_dt))
-            .collect::<Vec<_>>();
-
-        let u_minus_supporting_states = operators
-            .incoherent
-            .iter()
-            .map(|incoherent| state - (incoherent * sqrt_dt))
-            .collect::<Vec<_>>();
 
         // Calculate the final state
 
         let mut out = state.to_owned();
         // 1/2 dt a(\bar{Y})
-        system.apply_coherent_step(
-            &mut out,
+        out += &system.get_coherent_step(
             Complex {
                 re: 0.5f64 * dt,
                 im: 0f64,
@@ -253,44 +217,28 @@ impl<T: SDESystem> Solver<T> for Order2ExplicitWeakSolver {
             t,
         );
         // 1/2 dt a(Y) + 1/2 \sum_j b^j dw^j (2 - N_incoherent)
-        T::apply_step_from_parts(
-            &mut out,
+        out += &T::get_step_from_parts(
             &parts,
             &SDEStep {
                 coherent: Complex {
                     re: 0.5f64 * dt,
                     im: 0f64,
                 },
+                #[allow(clippy::cast_precision_loss)]
                 incoherent: noise
                     .iter()
                     .map(|dw| dw * (0.5 - (0.5 * (system.n_incoherent() as f64 - 1.0) / sqrt_dt)))
                     .collect(),
             },
         );
-        // 1/4 \sum_j b^j(Rj+) dw^j + (dw^j^2 - dt) / sqrt(dt)
-        for (j, (r_plus_supporting_state, dwj)) in r_plus_supporting_states.zip(&noise).enumerate()
-        {
-            system.apply_incoherent_step(
-                &mut out,
-                j,
-                0.25f64 * (dwj + (((dwj * dwj) - dt) / sqrt_dt)),
-                &r_plus_supporting_state,
-                t,
-            );
-        }
 
-        // 1/4 \sum_j b^j(Rj-) dw^j - (dw^j^2 - dt) / sqrt(dt)
-        for (j, (r_minus_supporting_state, dwj)) in
-            r_minus_supporting_states.zip(&noise).enumerate()
-        {
-            system.apply_incoherent_step(
-                &mut out,
-                j,
-                0.25f64 * (dwj - (((dwj * dwj) - dt) / sqrt_dt)),
-                &r_minus_supporting_state,
-                t,
-            );
-        }
+        let operators = system.operators_from_parts(&parts);
+
+        let u_plus_supporting_states = operators
+            .incoherent
+            .iter()
+            .map(|incoherent| state + (incoherent * sqrt_dt))
+            .collect::<Vec<_>>();
 
         // 1/4 \sum_j \sum_r b^j(Ur+) dw^j + (dw^j dw^r + vrj) / sqrt(dt)
         for (j, dwj) in noise.iter().enumerate() {
@@ -298,17 +246,28 @@ impl<T: SDESystem> Solver<T> for Order2ExplicitWeakSolver {
                 u_plus_supporting_states.iter().zip(&noise).enumerate()
             {
                 if j == r {
-                    continue;
+                    out += &system.get_incoherent_step(
+                        j,
+                        0.25f64 * (dwj + (((dwj * dwj) + v[[r, j]]) / sqrt_dt)),
+                        &((&operators.coherent * dt) + u_plus_supporting_state),
+                        t,
+                    );
+                } else {
+                    out += &system.get_incoherent_step(
+                        j,
+                        0.25f64 * (dwj + ((dwj * dwr) + v[[r, j]])) / sqrt_dt,
+                        u_plus_supporting_state,
+                        t,
+                    );
                 }
-                system.apply_incoherent_step(
-                    &mut out,
-                    j,
-                    0.25f64 * (dwj + ((dwj * dwr) + v[[r, j]])) / sqrt_dt,
-                    u_plus_supporting_state,
-                    t,
-                );
             }
         }
+
+        let u_minus_supporting_states = operators
+            .incoherent
+            .iter()
+            .map(|incoherent| state - (incoherent * sqrt_dt))
+            .collect::<Vec<_>>();
 
         // 1/4 \sum_j \sum_r b^j(Ur-) dw^j - (dw^j dw^r + vrj) / sqrt(dt)
         for (j, dwj) in noise.iter().enumerate() {
@@ -316,15 +275,22 @@ impl<T: SDESystem> Solver<T> for Order2ExplicitWeakSolver {
                 u_minus_supporting_states.iter().zip(&noise).enumerate()
             {
                 if j == r {
-                    continue;
+                    // R supporting value terms
+                    out += &system.get_incoherent_step(
+                        j,
+                        0.25f64 * (dwj - (((dwj * dwj) + v[[r, j]]) / sqrt_dt)),
+                        &((&operators.coherent * dt) + u_minus_supporting_state),
+                        t,
+                    );
+                } else {
+                    // U supporting value terms
+                    out += &system.get_incoherent_step(
+                        j,
+                        0.25f64 * (dwj - ((dwj * dwr) + v[[r, j]])) / sqrt_dt,
+                        u_minus_supporting_state,
+                        t,
+                    );
                 }
-                system.apply_incoherent_step(
-                    &mut out,
-                    j,
-                    0.25f64 * (dwj - ((dwj * dwr) + v[[r, j]])) / sqrt_dt,
-                    u_minus_supporting_state,
-                    t,
-                );
             }
         }
 
