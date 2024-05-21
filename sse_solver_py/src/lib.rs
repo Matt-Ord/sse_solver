@@ -101,7 +101,7 @@ fn solve_sse_euler_banded(
 
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
-fn solve_sse_euler_normalized_banded(
+fn solve_sse_normalized_euler_banded(
     initial_state: Vec<Complex<f64>>,
     hamiltonian_diagonal: Vec<Vec<Complex<f64>>>,
     hamiltonian_offset: Vec<usize>,
@@ -146,7 +146,7 @@ fn solve_sse_euler_normalized_banded(
     };
 
     let initial_state = Array1::from(initial_state);
-    let out = EulerSolver::solve(&initial_state, &system, n, step, dt);
+    let out = NormalizedEulerSolver::solve(&initial_state, &system, n, step, dt);
 
     Ok(out.into_raw_vec())
 }
@@ -253,7 +253,7 @@ fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_sse_euler_bra_ket, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_euler_banded, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_milsten_banded, m)?)?;
-    m.add_function(wrap_pyfunction!(solve_sse_euler_normalized_banded, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_sse_normalized_euler_banded, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_second_order_banded, m)?)?;
     Ok(())
 }
