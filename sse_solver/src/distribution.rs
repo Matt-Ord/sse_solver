@@ -3,6 +3,8 @@ use num_complex::Complex;
 use rand::Rng;
 use rand_distr::{Distribution, StandardNormal};
 
+/// The Standard Normal distribution for a complex number
+/// ``<dWi dWj*> = delta_ij``
 pub struct StandardComplexNormal;
 
 impl Distribution<Complex<f32>> for StandardComplexNormal {
@@ -23,6 +25,8 @@ impl Distribution<Complex<f64>> for StandardComplexNormal {
     }
 }
 
+// The V distribution for n incoherent operators, according to eqn 14.2.8 - 14.2.10
+// in TODO paper
 pub struct VMatrix {
     pub n: usize,
     pub dt: f64,
@@ -37,7 +41,7 @@ impl Distribution<Array2<f64>> for VMatrix {
 
         for i in 0..self.n {
             for j in 0..i {
-                let choice = rng.gen_bool(0.5);
+                let choice = rng.gen::<bool>();
                 out[[i, j]] = if choice { options[0] } else { options[1] };
                 out[[j, i]] = if choice { options[1] } else { options[0] };
             }

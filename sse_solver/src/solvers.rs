@@ -175,9 +175,10 @@ impl<T: SDESystem> Solver<T> for MilstenSolver {
     }
 }
 
-pub struct Order2WeakSolver {}
+/// See 15.1.3
+pub struct Order2ExplicitWeakSolver {}
 
-impl<T: SDESystem> Solver<T> for Order2WeakSolver {
+impl<T: SDESystem> Solver<T> for Order2ExplicitWeakSolver {
     #[allow(clippy::too_many_lines)]
     fn step(state: &Array1<Complex<f64>>, system: &T, t: f64, dt: f64) -> Array1<Complex<f64>> {
         let sqrt_dt = dt.sqrt();
@@ -295,7 +296,7 @@ impl<T: SDESystem> Solver<T> for Order2WeakSolver {
                 system.apply_incoherent_step(
                     &mut out,
                     j,
-                    0.25f64 * (dwj + (((dwj * dwr) + v[[r, j]]) / sqrt_dt)),
+                    0.25f64 * ((dwj + (dwj * dwr) + v[[r, j]]) / sqrt_dt),
                     u_plus_supporting_state,
                     t,
                 );
@@ -313,7 +314,7 @@ impl<T: SDESystem> Solver<T> for Order2WeakSolver {
                 system.apply_incoherent_step(
                     &mut out,
                     j,
-                    0.25f64 * (dwj - (((dwj * dwr) + v[[r, j]]) / sqrt_dt)),
+                    0.25f64 * ((dwj - (dwj * dwr) + v[[r, j]]) / sqrt_dt),
                     u_minus_supporting_state,
                     t,
                 );
@@ -321,5 +322,15 @@ impl<T: SDESystem> Solver<T> for Order2WeakSolver {
         }
 
         out
+    }
+}
+
+/// See 15.4.13
+pub struct Order2ImplicitWeakSolver {}
+
+impl<T: SDESystem> Solver<T> for Order2ImplicitWeakSolver {
+    #[allow(clippy::too_many_lines)]
+    fn step(state: &Array1<Complex<f64>>, system: &T, t: f64, dt: f64) -> Array1<Complex<f64>> {
+        todo!()
     }
 }

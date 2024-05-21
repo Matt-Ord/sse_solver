@@ -2,7 +2,7 @@ use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex;
 use pyo3::{exceptions::PyAssertionError, prelude::*};
 use sse_solver::{
-    solvers::{EulerSolver, MilstenSolver, Order2WeakSolver, Solver},
+    solvers::{EulerSolver, MilstenSolver, Order2ExplicitWeakSolver, Solver},
     sparse::BandedArray,
     sse_system::{FullNoise, SSESystem},
 };
@@ -132,7 +132,7 @@ fn solve_sse_second_order_banded(
     };
 
     let initial_state = Array1::from(initial_state);
-    let out = Order2WeakSolver::solve(&initial_state, &system, n, step, dt);
+    let out = Order2ExplicitWeakSolver::solve(&initial_state, &system, n, step, dt);
 
     Ok(out.into_raw_vec())
 }
