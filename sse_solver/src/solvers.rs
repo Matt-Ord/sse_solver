@@ -263,7 +263,7 @@ impl<T: SDESystem> Solver<T> for Order2ExplicitWeakSolver {
                 },
                 incoherent: noise
                     .iter()
-                    .map(|dw| 0.5 * dw * ((2 - system.n_incoherent()) as f64))
+                    .map(|dw| dw * (0.5 - (0.5 * (system.n_incoherent() as f64 - 1.0) / sqrt_dt)))
                     .collect(),
             },
         );
@@ -303,7 +303,7 @@ impl<T: SDESystem> Solver<T> for Order2ExplicitWeakSolver {
                 system.apply_incoherent_step(
                     &mut out,
                     j,
-                    0.25f64 * (dwj + (((dwj * dwr) + v[[r, j]]) / sqrt_dt)),
+                    0.25f64 * (dwj + ((dwj * dwr) + v[[r, j]])) / sqrt_dt,
                     u_plus_supporting_state,
                     t,
                 );
@@ -321,7 +321,7 @@ impl<T: SDESystem> Solver<T> for Order2ExplicitWeakSolver {
                 system.apply_incoherent_step(
                     &mut out,
                     j,
-                    0.25f64 * (dwj - (((dwj * dwr) + v[[r, j]]) / sqrt_dt)),
+                    0.25f64 * (dwj - ((dwj * dwr) + v[[r, j]])) / sqrt_dt,
                     u_minus_supporting_state,
                     t,
                 );
