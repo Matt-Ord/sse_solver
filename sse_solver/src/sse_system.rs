@@ -341,8 +341,18 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
 
         *out += &sse_step.resolve(&parts.state);
     }
-    fn operators_from_parts(&self, _parts: &Self::Parts) -> SDEOperators {
-        todo!()
+    fn operators_from_parts(&self, parts: &Self::Parts) -> SDEOperators {
+        let mut coherent = Array1::zeros([parts.state.shape()[0]]);
+        Self::apply_coherent_step_from_parts(&mut coherent, parts, Complex { re: 1f64, im: 0f64 });
+
+        SDEOperators {
+            coherent,
+            incoherent: parts
+                .stochastic
+                .iter()
+                .map(|p| &p.l_state - p.expectation * &parts.state)
+                .collect(),
+        }
     }
 
     type CoherentParts = SSEParts;
