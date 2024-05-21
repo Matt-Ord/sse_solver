@@ -4,7 +4,7 @@ use num_complex::Complex;
 use rand::Rng;
 
 use crate::{
-    distribution::StandardComplexNormal,
+    distribution::{StandardComplexNormal, VMatrix},
     system::{SDEStep, SDESystem},
 };
 
@@ -100,10 +100,10 @@ impl<T: SDESystem> Solver<T> for MilstenSolver {
 
         let mut out = state.to_owned();
         // The non-supported part of the step
-        // Y_k(n+1) = Y_k(n) + a dt + \sum_j \frac{1}{2}  b^j(t, Y(n))_k dW^j - 1/sqrt(dt)(b^j(t, Y(n))_k)
+        // Y_k(n+1) = Y_k(n) + a dt + \sum_j \frac{1}{2}  b^j(t, Y(n))_k dW^j - sqrt(dt)(b^j(t, Y(n))_k)
         let simple_step = SDEStep {
             coherent: Complex { re: dt, im: 0f64 },
-            incoherent: noise.iter().map(|d| (d / 2f64) - sqrt_dt).collect(),
+            incoherent: noise.iter().map(|d| 0.5f64 * (d + sqrt_dt)).collect(),
         };
         T::apply_step_from_parts(&mut out, &parts, &simple_step);
 
@@ -128,11 +128,11 @@ impl<T: SDESystem> Solver<T> for MilstenSolver {
             &second_supporting_step,
         );
         // Add in the contribution to bb' from this supporting state (1/sqrt(dt) b(\bar{Y}))
-        system.apply_incoherent_step(
+        system.apply_incoherent_steps(
             &mut out,
             &(0..system.n_incoherent())
                 .map(|_| Complex {
-                    re: sqrt_dt,
+                    re: -0.5f64 * sqrt_dt,
                     im: 0f64,
                 })
                 .collect::<Vec<_>>(),
@@ -144,14 +144,29 @@ impl<T: SDESystem> Solver<T> for MilstenSolver {
         // \bar{Y}(n) = Y(n) + \underline{a}_k dt  + \sum_j b^j dW^j
         // as suggested in the above book, eqn 11.1.14, we drop the \underline{a}_k term
         // \bar{Y}(n) = Y(n) + \sum_j b^j dW^j
+        let first_supporting_step = SDEStep {
+            coherent: Complex { re: dt, im: 0f64 },
+            incoherent: noise.iter().map(|d| (d + 0.5f64 * sqrt_dt)).collect(),
+        };
         let mut first_supporting_state = state.to_owned();
-        T::apply_incoherent_step_from_parts(&mut first_supporting_state, &parts.into(), &noise);
+        T::apply_step_from_parts(&mut first_supporting_state, &parts, &first_supporting_step);
+        system.apply_incoherent_steps(
+            &mut first_supporting_state,
+            &(0..system.n_incoherent())
+                .map(|_| Complex {
+                    re: -0.5f64 * sqrt_dt,
+                    im: 0f64,
+                })
+                .collect::<Vec<_>>(),
+            &second_supporting_state,
+            t,
+        );
 
         // Add in the parts from the first supporting state \bar{Y}(n)
         // \frac{1}{2} \sum_j (b^j(t, \bar{Y}(n))_k)dW^j
-        system.apply_incoherent_step(
+        system.apply_incoherent_steps(
             &mut out,
-            &simple_step.incoherent,
+            &noise.iter().map(|d| 0.5f64 * d).collect::<Vec<_>>(),
             &first_supporting_state,
             t,
         );
@@ -163,7 +178,148 @@ impl<T: SDESystem> Solver<T> for MilstenSolver {
 pub struct Order2WeakSolver {}
 
 impl<T: SDESystem> Solver<T> for Order2WeakSolver {
-    fn step(_state: &Array1<Complex<f64>>, _system: &T, _t: f64, _dt: f64) -> Array1<Complex<f64>> {
-        todo!()
+    #[allow(clippy::too_many_lines)]
+    fn step(state: &Array1<Complex<f64>>, system: &T, t: f64, dt: f64) -> Array1<Complex<f64>> {
+        let sqrt_dt = dt.sqrt();
+
+        let mut rng = rand::thread_rng();
+        let v = &rng.sample(VMatrix {
+            dt,
+            n: system.n_incoherent(),
+        });
+
+        let noise = rng
+            .sample_iter::<Complex<_>, _>(StandardComplexNormal)
+            .map(|d| d * sqrt_dt)
+            .take(system.n_incoherent())
+            .collect::<Vec<_>>();
+
+        let parts = system.get_parts(state, t);
+
+        // Calculate all supporting states
+
+        let y_supporting_step = SDEStep {
+            coherent: Complex { re: dt, im: 0f64 },
+            incoherent: noise,
+        };
+
+        let mut y_supporting_state = state.to_owned();
+        T::apply_step_from_parts(&mut y_supporting_state, &parts, &y_supporting_step);
+        let noise = y_supporting_step.incoherent;
+
+        let operators = system.operators_from_parts(&parts);
+        let r_plus_supporting_states = operators
+            .incoherent
+            .iter()
+            .map(|incoherent| state + (&operators.coherent * dt) + (incoherent * sqrt_dt));
+
+        let r_minus_supporting_states = operators
+            .incoherent
+            .iter()
+            .map(|incoherent| state + (&operators.coherent * dt) - (incoherent * sqrt_dt));
+
+        //TODO maybe r from u to save time
+        let u_plus_supporting_states = operators
+            .incoherent
+            .iter()
+            .map(|incoherent| state + incoherent * sqrt_dt)
+            .collect::<Vec<_>>();
+
+        let u_minus_supporting_states = operators
+            .incoherent
+            .iter()
+            .map(|incoherent| state - incoherent * sqrt_dt)
+            .collect::<Vec<_>>();
+
+        // Calculate the final state
+
+        let mut out = state.to_owned();
+        // 1/2 dt a(\bar{Y})
+        system.apply_coherent_step(
+            &mut out,
+            Complex {
+                re: 0.5f64 * dt,
+                im: 0f64,
+            },
+            &y_supporting_state,
+            t,
+        );
+        // 1/2 dt a(Y) + 1/2 \sum_j b^j dw^j (2 - N_incoherent)
+        T::apply_step_from_parts(
+            &mut out,
+            &parts,
+            &SDEStep {
+                coherent: Complex {
+                    re: 0.5f64 * dt,
+                    im: 0f64,
+                },
+                incoherent: noise
+                    .iter()
+                    .map(|dw| dw * ((2 - system.n_incoherent()) as f64))
+                    .collect(),
+            },
+        );
+        // 1/4 \sum_j b^j(Rj+) dw^j + (dw^j^2 - dt) / sqrt(dt)
+        for (j, (r_plus_supporting_state, dwj)) in r_plus_supporting_states.zip(&noise).enumerate()
+        {
+            system.apply_incoherent_step(
+                &mut out,
+                j,
+                0.25f64 * (dwj + ((dwj * dwj) - dt) / sqrt_dt),
+                &r_plus_supporting_state,
+                t,
+            );
+        }
+
+        // 1/4 \sum_j b^j(Rj-) dw^j - (dw^j^2 - dt) / sqrt(dt)
+        for (j, (r_minus_supporting_state, dwj)) in
+            r_minus_supporting_states.zip(&noise).enumerate()
+        {
+            system.apply_incoherent_step(
+                &mut out,
+                j,
+                0.25f64 * (dwj - ((dwj * dwj) - dt) / sqrt_dt),
+                &r_minus_supporting_state,
+                t,
+            );
+        }
+
+        // 1/4 \sum_j \sum_r b^j(Ur+) dw^j + (dw^j dw^r + vrj) / sqrt(dt)
+        for (j, dwj) in noise.iter().enumerate() {
+            for (r, (u_plus_supporting_state, dwr)) in
+                u_plus_supporting_states.iter().zip(&noise).enumerate()
+            {
+                if j == r {
+                    continue;
+                }
+                system.apply_incoherent_step(
+                    &mut out,
+                    j,
+                    0.25f64 * (dwj + (((dwj * dwr) + v[[r, j]]) / sqrt_dt)),
+                    u_plus_supporting_state,
+                    t,
+                );
+            }
+        }
+
+        // 1/4 \sum_j \sum_r b^j(Ur-) dw^j - (dw^j dw^r + vrj) / sqrt(dt)
+        for (j, dwj) in noise.iter().enumerate() {
+            for (r, (u_minus_supporting_state, dwr)) in
+                u_minus_supporting_states.iter().zip(&noise).enumerate()
+            {
+                if j == r {
+                    continue;
+                }
+                system.apply_incoherent_step(
+                    &mut out,
+                    j,
+                    0.25f64 * (dwj - (((dwj * dwr) + v[[r, j]]) / sqrt_dt)),
+                    u_minus_supporting_state,
+                    t,
+                );
+            }
+        }
+
+        out
     }
 }

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     sparse::{BandedArray, FactorizedArray, TransposedBandedArray},
-    system::{SDEStep, SDESystem},
+    system::{SDEOperators, SDEStep, SDESystem},
 };
 
 pub trait Noise {
@@ -18,6 +18,13 @@ pub trait Noise {
     fn len(&self) -> usize;
 
     fn get_parts(&self, state: &Array1<Complex<f64>>, t: f64) -> Vec<SSEStochasticPart>;
+
+    fn get_incoherent_part(
+        &self,
+        index: usize,
+        state: &Array1<Complex<f64>>,
+        t: f64,
+    ) -> SSEStochasticIncoherentPart;
 
     fn get_incoherent_parts(
         &self,
@@ -59,7 +66,7 @@ struct FullNoiseSource<T: Tensor, U: Tensor> {
     operator: T,
     conjugate_operator: U,
 }
-
+#[derive(Clone)]
 pub struct SSEParts {
     state: Array1<Complex<f64>>,
     /// H |\psi>
@@ -67,7 +74,7 @@ pub struct SSEParts {
     /// Parts from a the stochastic terms
     stochastic: Vec<SSEStochasticPart>,
 }
-
+#[derive(Clone)]
 pub struct SSEStochasticPart {
     /// <L>
     expectation: Complex<f64>,
@@ -76,18 +83,24 @@ pub struct SSEStochasticPart {
     /// L^\dagger L |\psi>
     l_dagger_l_state: Array1<Complex<f64>>,
 }
-
+#[derive(Clone)]
 pub struct SSEIncoherentParts {
     state: Array1<Complex<f64>>,
     /// Parts from a the stochastic terms
     stochastic: Vec<SSEStochasticIncoherentPart>,
 }
-
+#[derive(Clone)]
 pub struct SSEStochasticIncoherentPart {
     /// <L>
     expectation: Complex<f64>,
     /// L |\psi>
     l_state: Array1<Complex<f64>>,
+}
+#[derive(Clone)]
+pub struct SSEIncoherentPart {
+    state: Array1<Complex<f64>>,
+    /// Parts from a the stochastic terms
+    stochastic: SSEStochasticIncoherentPart,
 }
 
 impl From<SSEParts> for SSEIncoherentParts {
@@ -221,6 +234,15 @@ impl<T: Tensor, U: Tensor> Noise for FullNoise<T, U> {
             .map(|s| s.get_incoherent_part(state, t))
             .collect()
     }
+
+    fn get_incoherent_part(
+        &self,
+        index: usize,
+        state: &Array1<Complex<f64>>,
+        t: f64,
+    ) -> SSEStochasticIncoherentPart {
+        self.0[index].get_incoherent_part(state, t)
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -297,7 +319,7 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
         }
     }
 
-    fn apply_incoherent_step_from_parts(
+    fn apply_incoherent_steps_from_parts(
         out: &mut Array1<Complex<f64>>,
         parts: &Self::IncoherentParts,
         incoherent_step: &[Complex<f64>],
@@ -318,6 +340,89 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
         }
 
         *out += &sse_step.resolve(&parts.state);
+    }
+    fn operators_from_parts(&self, _parts: &Self::Parts) -> SDEOperators {
+        todo!()
+    }
+
+    type CoherentParts = SSEParts;
+
+    fn get_coherent_parts(&self, state: &Array1<Complex<f64>>, t: f64) -> Self::CoherentParts {
+        self.get_parts(state, t)
+    }
+
+    fn apply_coherent_step_from_parts(
+        out: &mut Array1<Complex<f64>>,
+        parts: &Self::CoherentParts,
+        coherent_step: Complex<f64>,
+    ) {
+        let mut sse_step = SSEStepSummation {
+            diagonal: Complex { re: 0f64, im: 0f64 },
+            off_diagonal: Vec::with_capacity(1 + 2 * &parts.stochastic.len()),
+        };
+
+        sse_step.off_diagonal.push(SSEStepOffDiagonal {
+            amplitude: Complex {
+                re: coherent_step.im,
+                im: -coherent_step.re,
+            },
+            direction: &parts.hamiltonian,
+        });
+
+        for part in &parts.stochastic {
+            // Terms involving the collapse operator contribute to both the coherent and incoherent part
+            // (L <L^\dagger> - 1 / 2 <L^\dagger><L> - 1 / 2 L^\dagger L) * coherent_step + (L - <L>) * incoherent_step_i |\psi>
+
+            // - dt / 2 <L^\dagger><L> |\psi>
+            sse_step.diagonal -= 0.5 * coherent_step * part.expectation.norm_sqr();
+
+            // + dt L <L^\dagger>  |\psi>
+            sse_step.off_diagonal.push(SSEStepOffDiagonal {
+                amplitude: (part.expectation.conj() * coherent_step),
+                direction: &part.l_state,
+            });
+            // - (dt / 2) L^\dagger L |\psi>
+            sse_step.off_diagonal.push(SSEStepOffDiagonal {
+                amplitude: -0.5 * coherent_step,
+                direction: &part.l_dagger_l_state,
+            });
+        }
+
+        *out += &sse_step.resolve(&parts.state);
+    }
+
+    type IncoherentPart = SSEIncoherentPart;
+
+    fn get_incoherent_part(
+        &self,
+        index: usize,
+        state: &Array1<Complex<f64>>,
+        t: f64,
+    ) -> Self::IncoherentPart {
+        SSEIncoherentPart {
+            state: state.clone(),
+            stochastic: self.noise.get_incoherent_part(index, state, t),
+        }
+    }
+
+    fn apply_incoherent_step_from_part(
+        out: &mut Array1<Complex<f64>>,
+        part: &Self::IncoherentPart,
+        incoherent_step: Complex<f64>,
+    ) {
+        let mut sse_step = SSEStepSummation {
+            diagonal: Complex { re: 0f64, im: 0f64 },
+            off_diagonal: Vec::with_capacity(1),
+        };
+
+        // (L - <L>) * incoherent_step |\psi>
+        sse_step.diagonal -= incoherent_step * part.stochastic.expectation;
+
+        sse_step.off_diagonal.push(SSEStepOffDiagonal {
+            amplitude: incoherent_step,
+            direction: &part.stochastic.l_state,
+        });
+        *out += &sse_step.resolve(&part.state);
     }
 }
 

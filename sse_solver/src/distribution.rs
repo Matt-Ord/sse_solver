@@ -1,3 +1,4 @@
+use ndarray::Array2;
 use num_complex::Complex;
 use rand::Rng;
 use rand_distr::{Distribution, StandardNormal};
@@ -19,5 +20,35 @@ impl Distribution<Complex<f64>> for StandardComplexNormal {
         let re = rng.sample::<f64, _>(StandardNormal) / std::f64::consts::SQRT_2;
         let im = rng.sample::<f64, _>(StandardNormal) / std::f64::consts::SQRT_2;
         Complex { re, im }
+    }
+}
+
+pub struct VMatrix {
+    pub n: usize,
+    pub dt: f64,
+}
+
+impl Distribution<Array2<f64>> for VMatrix {
+    #[inline]
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Array2<f64> {
+        let mut out = Array2::zeros([self.n, self.n]);
+
+        let options = [self.dt, -self.dt];
+        rng.gen_range(0..2);
+        for i in 0..self.n {
+            for j in 0..i {
+                let choice = rng.gen_bool(0.5);
+                if choice {
+                    out[[i, j]] = options[0];
+                    out[[j, i]] = options[1];
+                } else {
+                    out[[i, j]] = options[1];
+                    out[[j, i]] = options[0];
+                }
+            }
+            out[[i, i]] = options[1];
+        }
+
+        out
     }
 }
