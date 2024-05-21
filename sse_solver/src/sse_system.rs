@@ -300,7 +300,7 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
             *out += &((dw + (part.expectation.conj() * step.coherent)) * &part.l_state);
 
             // - (dt / 2) L^\dagger L |\psi>
-            *out += &((-0.5 * step.coherent) * &part.l_state);
+            *out += &((-0.5 * step.coherent) * &part.l_dagger_l_state);
         }
 
         *out += &(diagonal * &parts.state);
