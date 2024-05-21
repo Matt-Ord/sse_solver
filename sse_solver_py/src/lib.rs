@@ -57,6 +57,27 @@ fn solve_sse_euler_banded(
     step: usize,
     dt: f64,
 ) -> PyResult<Vec<Complex<f64>>> {
+    if operators_diagonals.len() != operators_offsets.len() {
+        return Err(PyAssertionError::new_err("Bad Operators"));
+    }
+    if operators_diagonals[0].len() != operators_offsets[0].len() {
+        return Err(PyAssertionError::new_err(
+            "Number of offsets does not match number of diagonals",
+        ));
+    }
+    if hamiltonian_diagonal.len() != hamiltonian_offset.len() {
+        return Err(PyAssertionError::new_err(
+            "Number of offsets does not match number of diagonals",
+        ));
+    }
+    if operators_diagonals[0][0].len() != hamiltonian_diagonal[0].len()
+        || hamiltonian_diagonal[0].len() != initial_state.len()
+    {
+        return Err(PyAssertionError::new_err(
+            "Bad Hamiltonian or operator size",
+        ));
+    }
+
     let shape = [initial_state.len(), initial_state.len()];
     let noise = FullNoise::from_banded(
         &operators_diagonals

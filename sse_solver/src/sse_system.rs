@@ -287,15 +287,17 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
             im: -step.coherent.re,
         } * &parts.hamiltonian);
 
+        assert!(parts.stochastic.len() == step.incoherent.len());
         for (part, dw) in parts.stochastic.iter().zip(step.incoherent.iter()) {
             // Terms involving the collapse operator contribute to both the coherent and incoherent part
             // (L <L^\dagger> - 1 / 2 <L^\dagger><L> - 1 / 2 L^\dagger L) * coherent_step + (L - <L>) * incoherent_step_i |\psi>
 
             // - <L> dw - dt / 2 <L^\dagger><L> |\psi>
-            diagonal -= dw * part.expectation + 0.5 * step.coherent * part.expectation.norm_sqr();
+            diagonal -=
+                (dw * part.expectation) + (0.5 * step.coherent * part.expectation.norm_sqr());
 
             // + dt L <L^\dagger> + dw L |\psi>
-            *out += &((dw + part.expectation.conj() * step.coherent) * &part.l_state);
+            *out += &((dw + (part.expectation.conj() * step.coherent)) * &part.l_state);
 
             // - (dt / 2) L^\dagger L |\psi>
             *out += &((-0.5 * step.coherent) * &part.l_state);

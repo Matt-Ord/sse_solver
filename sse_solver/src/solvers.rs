@@ -1,5 +1,4 @@
 use ndarray::{Array1, Array2};
-use ndarray_linalg::Norm;
 use num_complex::Complex;
 use rand::Rng;
 
@@ -14,15 +13,14 @@ pub trait Solver<T: SDESystem> {
     fn integrate(
         state: &Array1<Complex<f64>>,
         system: &T,
-        t_start: f64,
+        current_t: &mut f64,
         n_step: usize,
         dt: f64,
     ) -> Array1<Complex<f64>> {
         let mut out = state.clone();
-        let mut current_t = t_start.to_owned();
         for _n in 0..n_step {
-            out = Self::step(&out, system, current_t, dt);
-            current_t += dt;
+            out = Self::step(&out, system, *current_t, dt);
+            *current_t += dt;
         }
         out
     }
@@ -39,13 +37,13 @@ pub trait Solver<T: SDESystem> {
         let mut current_t = 0f64;
         for _step_n in 1..n {
             out.push_row(current.view()).unwrap();
-            current = Self::integrate(&current, system, current_t, step, dt);
-            current_t += dt * step as f64;
+            current = Self::integrate(&current, system, &mut current_t, step, dt);
+            // current_t += dt * step as f64;
             // TODO: we maybe shouldn't be doing this ...
-            current /= Complex {
-                re: current.norm_l2(),
-                im: 0f64,
-            };
+            // current /= Complex {
+            //     re: current.norm_l2(),
+            //     im: 0f64,
+            // };
         }
         out.push_row(current.view()).unwrap();
 
@@ -330,7 +328,7 @@ pub struct Order2ImplicitWeakSolver {}
 
 impl<T: SDESystem> Solver<T> for Order2ImplicitWeakSolver {
     #[allow(clippy::too_many_lines)]
-    fn step(state: &Array1<Complex<f64>>, system: &T, t: f64, dt: f64) -> Array1<Complex<f64>> {
+    fn step(_state: &Array1<Complex<f64>>, _system: &T, _t: f64, _dt: f64) -> Array1<Complex<f64>> {
         todo!()
     }
 }
