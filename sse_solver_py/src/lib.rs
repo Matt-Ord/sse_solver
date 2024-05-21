@@ -2,7 +2,9 @@ use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex;
 use pyo3::{exceptions::PyAssertionError, prelude::*};
 use sse_solver::{
-    solvers::{EulerSolver, MilstenSolver, Order2ExplicitWeakSolver, Solver},
+    solvers::{
+        EulerSolver, MilstenSolver, NormalizedEulerSolver, Order2ExplicitWeakSolver, Solver,
+    },
     sparse::BandedArray,
     sse_system::{FullNoise, SSESystem},
 };
@@ -48,6 +50,58 @@ fn solve_sse_euler(
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn solve_sse_euler_banded(
+    initial_state: Vec<Complex<f64>>,
+    hamiltonian_diagonal: Vec<Vec<Complex<f64>>>,
+    hamiltonian_offset: Vec<usize>,
+    operators_diagonals: Vec<Vec<Vec<Complex<f64>>>>,
+    operators_offsets: Vec<Vec<usize>>,
+    n: usize,
+    step: usize,
+    dt: f64,
+) -> PyResult<Vec<Complex<f64>>> {
+    if operators_diagonals.len() != operators_offsets.len() {
+        return Err(PyAssertionError::new_err("Bad Operators"));
+    }
+    if operators_diagonals[0].len() != operators_offsets[0].len() {
+        return Err(PyAssertionError::new_err(
+            "Number of offsets does not match number of diagonals",
+        ));
+    }
+    if hamiltonian_diagonal.len() != hamiltonian_offset.len() {
+        return Err(PyAssertionError::new_err(
+            "Number of offsets does not match number of diagonals",
+        ));
+    }
+    if operators_diagonals[0][0].len() != hamiltonian_diagonal[0].len()
+        || hamiltonian_diagonal[0].len() != initial_state.len()
+    {
+        return Err(PyAssertionError::new_err(
+            "Bad Hamiltonian or operator size",
+        ));
+    }
+
+    let shape = [initial_state.len(), initial_state.len()];
+    let noise = FullNoise::from_banded(
+        &operators_diagonals
+            .iter()
+            .zip(operators_offsets.iter())
+            .map(|(diagonals, offsets)| BandedArray::from_sparse(diagonals, offsets, &shape))
+            .collect::<Vec<_>>(),
+    );
+    let system = SSESystem {
+        noise,
+        hamiltonian: BandedArray::from_sparse(&hamiltonian_diagonal, &hamiltonian_offset, &shape),
+    };
+
+    let initial_state = Array1::from(initial_state);
+    let out = EulerSolver::solve(&initial_state, &system, n, step, dt);
+
+    Ok(out.into_raw_vec())
+}
+
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn solve_sse_euler_normalized_banded(
     initial_state: Vec<Complex<f64>>,
     hamiltonian_diagonal: Vec<Vec<Complex<f64>>>,
     hamiltonian_offset: Vec<usize>,
@@ -199,6 +253,7 @@ fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_sse_euler_bra_ket, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_euler_banded, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_milsten_banded, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_sse_euler_normalized_banded, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_second_order_banded, m)?)?;
     Ok(())
 }

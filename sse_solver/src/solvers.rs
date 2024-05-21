@@ -1,4 +1,5 @@
 use ndarray::{Array1, Array2};
+use ndarray_linalg::Norm;
 use num_complex::Complex;
 use rand::Rng;
 
@@ -38,12 +39,6 @@ pub trait Solver<T: SDESystem> {
         for _step_n in 1..n {
             out.push_row(current.view()).unwrap();
             current = Self::integrate(&current, system, &mut current_t, step, dt);
-            // current_t += dt * step as f64;
-            // TODO: we maybe shouldn't be doing this ...
-            // current /= Complex {
-            //     re: current.norm_l2(),
-            //     im: 0f64,
-            // };
         }
         out.push_row(current.view()).unwrap();
 
@@ -72,6 +67,20 @@ impl<T: SDESystem> Solver<T> for EulerSolver {
 
         let mut out = state.to_owned();
         system.apply_step(&mut out, &step, state, t);
+        out
+    }
+}
+
+pub struct NormalizedEulerSolver {}
+
+impl<T: SDESystem> Solver<T> for NormalizedEulerSolver {
+    fn step(state: &Array1<Complex<f64>>, system: &T, t: f64, dt: f64) -> Array1<Complex<f64>> {
+        let mut out = EulerSolver::step(state, system, t, dt);
+        // Normalize the state
+        out /= Complex {
+            re: out.norm_l2(),
+            im: 0f64,
+        };
         out
     }
 }
