@@ -2,7 +2,6 @@
 #![feature(array_chunks)]
 #![feature(slice_as_chunks)]
 #![feature(portable_simd)]
-#![feature(slice_flatten)]
 
 use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex;
