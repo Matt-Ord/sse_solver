@@ -1,6 +1,4 @@
-from typing import Literal
-
-import typing_extensions
+from ._sse_method import SSEMethod
 
 def solve_sse(
     initial_state: list[complex],
@@ -24,13 +22,6 @@ def solve_sse_banded(  # noqa: PLR0913
     operators_offsets: list[list[int]],
     config: SimulationConfig,
 ) -> list[complex]: ...
-
-SSEMethod: typing_extensions.TypeAlias = Literal[
-    "Euler",
-    "NormalizedEuler",
-    "Milsten",
-    "Order2ExplicitWeak",
-]
 
 class SimulationConfig:
     def __init__(  # noqa: PLR0913
