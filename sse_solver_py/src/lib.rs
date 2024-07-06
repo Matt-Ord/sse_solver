@@ -13,12 +13,12 @@ use sse_solver::{
     system::SDESystem,
 };
 
+#[derive(Clone, Copy)]
 enum SSEMethod {
     Euler,
     NormalizedEuler,
     Milsten,
     Order2ExplicitWeak,
-    LocalizedSolver,
 }
 
 #[pyclass]
@@ -27,20 +27,27 @@ struct SimulationConfig {
     step: usize,
     dt: f64,
     n_trajectories: usize,
+    n_realizations: usize,
     method: SSEMethod,
 }
 
 #[pymethods]
 impl SimulationConfig {
     #[new]
-    #[pyo3(signature = (*, n, step, dt, n_trajectories=1,method))]
-    fn new(n: usize, step: usize, dt: f64, n_trajectories: usize, method: &str) -> Self {
+    #[pyo3(signature = (*, n, step, dt, n_trajectories=1,method,n_realizations=1))]
+    fn new(
+        n: usize,
+        step: usize,
+        dt: f64,
+        n_trajectories: usize,
+        method: &str,
+        n_realizations: usize,
+    ) -> Self {
         let method_enum = match method {
             "Euler" => SSEMethod::Euler,
             "NormalizedEuler" => SSEMethod::NormalizedEuler,
             "Milsten" => SSEMethod::Milsten,
             "Order2ExplicitWeak" => SSEMethod::Order2ExplicitWeak,
-            "LocalizedSolver" => SSEMethod::LocalizedSolver,
             _ => panic!(),
         };
         SimulationConfig {
@@ -49,6 +56,7 @@ impl SimulationConfig {
             dt,
             n_trajectories,
             method: method_enum,
+            n_realizations,
         }
     }
 }
@@ -59,22 +67,43 @@ impl SimulationConfig {
         initial_state: &Array1<Complex<f64>>,
         system: &T,
     ) -> Array2<Complex<f64>> {
-        match self.method {
-            SSEMethod::Euler => {
-                EulerSolver::solve(initial_state, system, self.n, self.step, self.dt)
+        match (self.n_realizations, self.method) {
+            (1, SSEMethod::Euler) => {
+                EulerSolver::default().solve(initial_state, system, self.n, self.step, self.dt)
             }
-            SSEMethod::NormalizedEuler => {
-                NormalizedEulerSolver::solve(initial_state, system, self.n, self.step, self.dt)
+            (n_realizations, SSEMethod::Euler) => LocalizedSolver {
+                solver: EulerSolver::default(),
+                n_realizations,
             }
-            SSEMethod::Milsten => {
-                MilstenSolver::solve(initial_state, system, self.n, self.step, self.dt)
+            .solve(initial_state, system, self.n, self.step, self.dt),
+            (1, SSEMethod::NormalizedEuler) => NormalizedEulerSolver::default().solve(
+                initial_state,
+                system,
+                self.n,
+                self.step,
+                self.dt,
+            ),
+            (n_realizations, SSEMethod::NormalizedEuler) => LocalizedSolver {
+                solver: EulerSolver::default(),
+                n_realizations,
             }
-            SSEMethod::Order2ExplicitWeak => {
-                Order2ExplicitWeakSolver::solve(initial_state, system, self.n, self.step, self.dt)
+            .solve(initial_state, system, self.n, self.step, self.dt),
+            (1, SSEMethod::Milsten) => {
+                MilstenSolver {}.solve(initial_state, system, self.n, self.step, self.dt)
             }
-            SSEMethod::LocalizedSolver => {
-                LocalizedSolver::solve(initial_state, system, self.n, self.step, self.dt)
+            (n_realizations, SSEMethod::Milsten) => LocalizedSolver {
+                solver: MilstenSolver {},
+                n_realizations,
             }
+            .solve(initial_state, system, self.n, self.step, self.dt),
+            (1, SSEMethod::Order2ExplicitWeak) => {
+                Order2ExplicitWeakSolver {}.solve(initial_state, system, self.n, self.step, self.dt)
+            }
+            (n_realizations, SSEMethod::Order2ExplicitWeak) => LocalizedSolver {
+                solver: Order2ExplicitWeakSolver {},
+                n_realizations,
+            }
+            .solve(initial_state, system, self.n, self.step, self.dt),
         }
     }
 

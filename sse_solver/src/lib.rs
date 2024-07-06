@@ -98,7 +98,7 @@ mod tests {
         let system = get_random_system(10, n_states);
         let initial_state = get_initial_state(n_states);
 
-        let result = EulerSolver::solve(&initial_state, &system, 1, 1, 0.0);
+        let result = EulerSolver {}.solve(&initial_state, &system, 1, 1, 0.0);
         assert_eq!(result.slice(s![0, ..]), initial_state);
     }
     #[test]
@@ -108,7 +108,7 @@ mod tests {
         let initial_state = get_initial_state(n_states);
 
         let n_out = 3;
-        let result = EulerSolver::solve(&initial_state, &system, n_out, 10, 0.0);
+        let result = EulerSolver {}.solve(&initial_state, &system, n_out, 10, 0.0);
 
         for i in 0..n_out {
             assert_eq!(result.slice(s![i, ..]), initial_state);
