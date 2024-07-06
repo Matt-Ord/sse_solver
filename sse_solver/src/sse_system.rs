@@ -437,8 +437,8 @@ mod test {
 
         let n_out = 30;
         let dt = 1f64;
-        let diagonal_result = EulerSolver::solve(&initial_state, &diagonal_system, n_out, 10, dt);
-        let result_full = EulerSolver::solve(&initial_state, &full_system, n_out, 10, dt);
+        let diagonal_result = EulerSolver {}.solve(&initial_state, &diagonal_system, n_out, 10, dt);
+        let result_full = EulerSolver {}.solve(&initial_state, &full_system, n_out, 10, dt);
 
         for i in 0..n_out {
             assert_eq!(

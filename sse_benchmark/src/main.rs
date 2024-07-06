@@ -40,7 +40,7 @@ fn euler_solver_benchmark() {
     let n = 1000;
     let step = 1000;
     let dt = 0.0001;
-    test::black_box(EulerSolver::solve(&initial_state, &system, n, step, dt));
+    test::black_box(EulerSolver {}.solve(&initial_state, &system, n, step, dt));
 }
 #[allow(dead_code)]
 fn euler_solver_benchmark_full() {
@@ -64,7 +64,7 @@ fn euler_solver_benchmark_full() {
     let n = 100;
     let step = 4000;
     let dt = 0.0001;
-    test::black_box(EulerSolver::solve(&initial_state, &system, n, step, dt));
+    test::black_box(EulerSolver {}.solve(&initial_state, &system, n, step, dt));
 }
 
 #[allow(dead_code)]
@@ -104,7 +104,7 @@ fn euler_solver_benchmark_sparse() {
     let n = 800;
     let step = 8000;
     let dt = 1.25e-17;
-    test::black_box(EulerSolver::solve(&initial_state, &system, n, step, dt));
+    test::black_box(EulerSolver {}.solve(&initial_state, &system, n, step, dt));
 }
 #[allow(dead_code)]
 fn second_order_solver_benchmark_sparse() {
@@ -143,13 +143,7 @@ fn second_order_solver_benchmark_sparse() {
     let n = 80;
     let step = 8000;
     let dt = 1.25e-17;
-    test::black_box(Order2ExplicitWeakSolver::solve(
-        &initial_state,
-        &system,
-        n,
-        step,
-        dt,
-    ));
+    test::black_box(Order2ExplicitWeakSolver {}.solve(&initial_state, &system, n, step, dt));
 }
 fn euler_solver_full_matrix_optimal_benchmark_step(
     state: &Array1<Complex<f64>>,

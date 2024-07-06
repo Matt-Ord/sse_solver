@@ -31,5 +31,6 @@ class SimulationConfig:
         step: int,
         dt: float,
         n_trajectories: int = 1,
+        n_realizations: int = 1,
         method: SSEMethod,
     ) -> None: ...
