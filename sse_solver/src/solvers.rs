@@ -1,22 +1,25 @@
-use core::f64;
-use std::collections::HashMap;
-
 use ndarray::{s, Array1, Array2, Axis};
 use ndarray_linalg::{Eigh, Norm, UPLO};
 use num_complex::Complex;
 use rand::seq::SliceRandom;
 use rand::Rng;
-use rand_distr::{Distribution, WeightedIndex};
 
 use crate::{
     distribution::{StandardComplexNormal, VMatrix},
     system::{SDEStep, SDESystem},
 };
 
-pub trait Solver<T: SDESystem> {
-    fn step(state: &Array1<Complex<f64>>, system: &T, t: f64, dt: f64) -> Array1<Complex<f64>>;
+pub trait Solver {
+    fn step<T: SDESystem>(
+        &self,
+        state: &Array1<Complex<f64>>,
+        system: &T,
+        t: f64,
+        dt: f64,
+    ) -> Array1<Complex<f64>>;
 
-    fn integrate(
+    fn integrate<T: SDESystem>(
+        &self,
         state: &Array1<Complex<f64>>,
         system: &T,
         current_t: &mut f64,
@@ -25,13 +28,14 @@ pub trait Solver<T: SDESystem> {
     ) -> Array1<Complex<f64>> {
         let mut out = state.clone();
         for _n in 0..n_step {
-            out = Self::step(&out, system, *current_t, dt);
+            out = self.step(&out, system, *current_t, dt);
             *current_t += dt;
         }
         out
     }
     #[allow(clippy::cast_precision_loss)]
-    fn solve(
+    fn solve<T: SDESystem>(
+        &self,
         initial_state: &Array1<Complex<f64>>,
         system: &T,
         n: usize,
@@ -43,7 +47,7 @@ pub trait Solver<T: SDESystem> {
         let mut current_t = 0f64;
         for _step_n in 1..n {
             out.push_row(current.view()).unwrap();
-            current = Self::integrate(&current, system, &mut current_t, step, dt);
+            current = self.integrate(&current, system, &mut current_t, step, dt);
         }
         out.push_row(current.view()).unwrap();
 
@@ -51,10 +55,17 @@ pub trait Solver<T: SDESystem> {
     }
 }
 
+#[derive(Default)]
 pub struct EulerSolver {}
 
-impl<T: SDESystem> Solver<T> for EulerSolver {
-    fn step(state: &Array1<Complex<f64>>, system: &T, t: f64, dt: f64) -> Array1<Complex<f64>> {
+impl Solver for EulerSolver {
+    fn step<T: SDESystem>(
+        &self,
+        state: &Array1<Complex<f64>>,
+        system: &T,
+        t: f64,
+        dt: f64,
+    ) -> Array1<Complex<f64>> {
         // The basic euler method
         // Y_n+1 = Y_n + a dt + \sum_k b_k dW
         // where dW are normalized gaussian random variables,  <dW_k* dW_k'> = dt
@@ -110,48 +121,58 @@ fn select_random_localized_state(states: &Array2<Complex<f64>>) -> Array1<Comple
     };
 
     let (probabilities, eigenstates) = op.eigh(UPLO::Lower).unwrap();
-    let prob_eigen_map: Vec<(_, f64)> = eigenstates
-        .axis_iter(Axis(0))
-        .zip(probabilities.into_iter())
-        .map(|b| b)
-        .collect();
+
     let mut rng = rand::thread_rng();
-    let mut transformation = prob_eigen_map
+    let mut transformation = eigenstates
+        .axis_iter(Axis(0))
+        .zip(probabilities)
+        .collect::<Vec<(_, f64)>>()
         .choose_weighted(&mut rng, |item| item.1)
         .unwrap()
         .0
         .to_owned();
+
     transformation /= Complex {
         re: 2_f64.sqrt(),
         im: 0_f64,
     };
     get_weighted_state_vector(states, &transformation)
 }
-
-pub struct LocalizedSolver<T: SDESystem, S: Solver<T>> {
-    _ty: std::marker::PhantomData<S>,
-    _ty2: std::marker::PhantomData<T>,
+pub struct LocalizedSolver<S: Solver> {
+    pub solver: S,
+    pub n_realizations: usize,
 }
 
-impl<T: SDESystem, S: Solver<T>> Solver<T> for LocalizedSolver<T, S> {
-    fn step(state: &Array1<Complex<f64>>, system: &T, t: f64, dt: f64) -> Array1<Complex<f64>> {
-        let n_realizations = 2;
-
-        let mut state = Array2::zeros((n_realizations, state.len()));
-        for i in 0..n_realizations {
-            state
+impl<S: Solver> Solver for LocalizedSolver<S> {
+    fn step<T: SDESystem>(
+        &self,
+        state: &Array1<Complex<f64>>,
+        system: &T,
+        t: f64,
+        dt: f64,
+    ) -> Array1<Complex<f64>> {
+        let mut states = Array2::zeros((self.n_realizations, state.len()));
+        for i in 0..self.n_realizations {
+            states
                 .slice_mut(s![i, ..])
-                .assign(&(state + &S::step(state, system, t, dt)));
+                .assign(&(state + &self.solver.step(state, system, t, dt)));
         }
-        select_random_localized_state(&state)
+        select_random_localized_state(&states)
     }
 }
 
-pub struct NormalizedEulerSolver {}
+#[derive(Default)]
+pub struct NormalizedEulerSolver(EulerSolver);
 
-impl<T: SDESystem> Solver<T> for NormalizedEulerSolver {
-    fn step(state: &Array1<Complex<f64>>, system: &T, t: f64, dt: f64) -> Array1<Complex<f64>> {
-        let mut out = EulerSolver::step(state, system, t, dt);
+impl Solver for NormalizedEulerSolver {
+    fn step<T: SDESystem>(
+        &self,
+        state: &Array1<Complex<f64>>,
+        system: &T,
+        t: f64,
+        dt: f64,
+    ) -> Array1<Complex<f64>> {
+        let mut out = self.0.step(state, system, t, dt);
         // Normalize the state
         out /= Complex {
             re: out.norm_l2(),
@@ -163,8 +184,14 @@ impl<T: SDESystem> Solver<T> for NormalizedEulerSolver {
 
 pub struct MilstenSolver {}
 
-impl<T: SDESystem> Solver<T> for MilstenSolver {
-    fn step(state: &Array1<Complex<f64>>, system: &T, t: f64, dt: f64) -> Array1<Complex<f64>> {
+impl Solver for MilstenSolver {
+    fn step<T: SDESystem>(
+        &self,
+        state: &Array1<Complex<f64>>,
+        system: &T,
+        t: f64,
+        dt: f64,
+    ) -> Array1<Complex<f64>> {
         // The explicit milsten scheme for commuting noise
         // Y_k(n+1) = Y_k(n) + \underline{a}_k dt + \frac{1}{2} \sum_j (b^j(t, \bar{Y}(n))_k + b^j(t, Y(n))_k)dW^j
         // where dW are normalized gaussian random variables,  <dW_k* dW_k'> = dt
@@ -254,8 +281,14 @@ impl<T: SDESystem> Solver<T> for MilstenSolver {
 /// See 15.1.3, although there is a typo if one compares to 15.4.13
 pub struct Order2ExplicitWeakSolver {}
 
-impl<T: SDESystem> Solver<T> for Order2ExplicitWeakSolver {
-    fn step(state: &Array1<Complex<f64>>, system: &T, t: f64, dt: f64) -> Array1<Complex<f64>> {
+impl Solver for Order2ExplicitWeakSolver {
+    fn step<T: SDESystem>(
+        &self,
+        state: &Array1<Complex<f64>>,
+        system: &T,
+        t: f64,
+        dt: f64,
+    ) -> Array1<Complex<f64>> {
         let sqrt_dt = dt.sqrt();
 
         let mut rng = rand::thread_rng();
@@ -379,9 +412,15 @@ impl<T: SDESystem> Solver<T> for Order2ExplicitWeakSolver {
 /// See 15.4.13
 pub struct Order2ImplicitWeakSolver {}
 
-impl<T: SDESystem> Solver<T> for Order2ImplicitWeakSolver {
+impl Solver for Order2ImplicitWeakSolver {
     #[allow(clippy::too_many_lines)]
-    fn step(_state: &Array1<Complex<f64>>, _system: &T, _t: f64, _dt: f64) -> Array1<Complex<f64>> {
+    fn step<T: SDESystem>(
+        &self,
+        _state: &Array1<Complex<f64>>,
+        _system: &T,
+        _t: f64,
+        _dt: f64,
+    ) -> Array1<Complex<f64>> {
         todo!()
     }
 }
