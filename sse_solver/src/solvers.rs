@@ -1,7 +1,4 @@
-use core::f64;
-use std::collections::HashMap;
-
-use ndarray::{s, Array1, Array2, Axis};
+use ndarray::{s, Array1, Array2};
 use ndarray_linalg::{Eigh, Norm, UPLO};
 use num_complex::Complex;
 use rand::seq::SliceRandom;
