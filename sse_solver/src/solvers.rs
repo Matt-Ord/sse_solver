@@ -1,7 +1,12 @@
-use ndarray::{Array1, Array2};
-use ndarray_linalg::Norm;
+use core::f64;
+use std::collections::HashMap;
+
+use ndarray::{s, Array1, Array2, Axis};
+use ndarray_linalg::{Eigh, Norm, UPLO};
 use num_complex::Complex;
+use rand::seq::SliceRandom;
 use rand::Rng;
+use rand_distr::{Distribution, WeightedIndex};
 
 use crate::{
     distribution::{StandardComplexNormal, VMatrix},
@@ -66,6 +71,79 @@ impl<T: SDESystem> Solver<T> for EulerSolver {
         };
 
         state + system.get_step(&step, state, t)
+    }
+}
+
+fn calculate_inner_products(states: &Array2<Complex<f64>>) -> Array2<Complex<f64>> {
+    let n = states.nrows();
+    let mut result = Array2::<Complex<f64>>::zeros((n, n));
+
+    for i in 0..n {
+        for j in 0..n {
+            let row_i = states.slice(s![i, ..]);
+            let row_j = states.slice(s![j, ..]);
+            let dot_product = row_i.dot(&row_j);
+            result[[i, j]] = dot_product;
+        }
+    }
+    result
+}
+
+fn get_weighted_state_vector(
+    state_list_data: &Array2<Complex<f64>>,
+    weights: &Array1<Complex<f64>>,
+) -> Array1<Complex<f64>> {
+    state_list_data
+        .rows()
+        .into_iter()
+        .zip(weights)
+        .map(|(v, w)| &v * *w)
+        .reduce(|a, b| a + b)
+        .unwrap()
+}
+
+fn select_random_localized_state(states: &Array2<Complex<f64>>) -> Array1<Complex<f64>> {
+    let mut op = calculate_inner_products(states);
+    op /= Complex {
+        re: op.norm(),
+        im: 0_f64,
+    };
+
+    let (probabilities, eigenstates) = op.eigh(UPLO::Lower).unwrap();
+    let prob_eigen_map: Vec<(_, f64)> = eigenstates
+        .axis_iter(Axis(0))
+        .zip(probabilities.into_iter())
+        .map(|b| b)
+        .collect();
+    let mut rng = rand::thread_rng();
+    let mut transformation = prob_eigen_map
+        .choose_weighted(&mut rng, |item| item.1)
+        .unwrap()
+        .0
+        .to_owned();
+    transformation /= Complex {
+        re: 2_f64.sqrt(),
+        im: 0_f64,
+    };
+    get_weighted_state_vector(states, &transformation)
+}
+
+pub struct LocalizedSolver<T: SDESystem, S: Solver<T>> {
+    _ty: std::marker::PhantomData<S>,
+    _ty2: std::marker::PhantomData<T>,
+}
+
+impl<T: SDESystem, S: Solver<T>> Solver<T> for LocalizedSolver<T, S> {
+    fn step(state: &Array1<Complex<f64>>, system: &T, t: f64, dt: f64) -> Array1<Complex<f64>> {
+        let n_realizations = 2;
+
+        let mut state = Array2::zeros((n_realizations, state.len()));
+        for i in 0..n_realizations {
+            state
+                .slice_mut(s![i, ..])
+                .assign(&(state + &S::step(state, system, t, dt)));
+        }
+        select_random_localized_state(&state)
     }
 }
 

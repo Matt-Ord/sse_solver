@@ -5,7 +5,8 @@ use num_complex::Complex;
 use pyo3::{exceptions::PyAssertionError, prelude::*};
 use sse_solver::{
     solvers::{
-        EulerSolver, MilstenSolver, NormalizedEulerSolver, Order2ExplicitWeakSolver, Solver,
+        EulerSolver, LocalizedSolver, MilstenSolver, NormalizedEulerSolver,
+        Order2ExplicitWeakSolver, Solver,
     },
     sparse::BandedArray,
     sse_system::{FullNoise, SSESystem},
@@ -17,6 +18,7 @@ enum SSEMethod {
     NormalizedEuler,
     Milsten,
     Order2ExplicitWeak,
+    LocalizedSolver,
 }
 
 #[pyclass]
@@ -38,6 +40,7 @@ impl SimulationConfig {
             "NormalizedEuler" => SSEMethod::NormalizedEuler,
             "Milsten" => SSEMethod::Milsten,
             "Order2ExplicitWeak" => SSEMethod::Order2ExplicitWeak,
+            "LocalizedSolver" => SSEMethod::LocalizedSolver,
             _ => panic!(),
         };
         SimulationConfig {
@@ -68,6 +71,9 @@ impl SimulationConfig {
             }
             SSEMethod::Order2ExplicitWeak => {
                 Order2ExplicitWeakSolver::solve(initial_state, system, self.n, self.step, self.dt)
+            }
+            SSEMethod::LocalizedSolver => {
+                LocalizedSolver::solve(initial_state, system, self.n, self.step, self.dt)
             }
         }
     }
