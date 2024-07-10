@@ -1,9 +1,8 @@
-use ndarray::{s, Array1, Array2};
+use ndarray::{s, Array1, Array2, Axis};
 use ndarray_linalg::{Eigh, Norm, UPLO};
 use num_complex::Complex;
 use rand::seq::SliceRandom;
 use rand::Rng;
-use rand_distr::{Distribution, WeightedIndex};
 
 use crate::{
     distribution::{StandardComplexNormal, VMatrix},
@@ -122,17 +121,17 @@ fn select_random_localized_state(states: &Array2<Complex<f64>>) -> Array1<Comple
     };
 
     let (probabilities, eigenstates) = op.eigh(UPLO::Lower).unwrap();
-    let prob_eigen_map: Vec<(_, f64)> = eigenstates
-        .axis_iter(Axis(0))
-        .zip(probabilities.into_iter())
-        .map(|b| b)
-        .collect();
+
     let mut rng = rand::thread_rng();
-    let mut transformation = prob_eigen_map
+    let mut transformation = eigenstates
+        .axis_iter(Axis(0))
+        .zip(probabilities)
+        .collect::<Vec<(_, f64)>>()
         .choose_weighted(&mut rng, |item| item.1)
         .unwrap()
         .0
         .to_owned();
+
     transformation /= Complex {
         re: 2_f64.sqrt(),
         im: 0_f64,
