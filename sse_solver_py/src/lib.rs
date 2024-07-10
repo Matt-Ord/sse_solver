@@ -209,55 +209,6 @@ fn solve_sse_bra_ket(
     Ok(config.simulate_system(&initial_state, &system))
 }
 
-#[pyfunction]
-#[allow(clippy::too_many_arguments)]
-fn solve_sse_localized(
-    initial_state: Vec<Complex<f64>>,
-    hamiltonian_diagonal: Vec<Vec<Complex<f64>>>,
-    hamiltonian_offset: Vec<usize>,
-    operators_diagonals: Vec<Vec<Vec<Complex<f64>>>>,
-    operators_offsets: Vec<Vec<usize>>,
-    config: PyRef<SimulationConfig>,
-) -> PyResult<Vec<Complex<f64>>> {
-    if operators_diagonals.len() != operators_offsets.len() {
-        return Err(PyAssertionError::new_err("Bad Operators"));
-    }
-    if operators_diagonals[0].len() != operators_offsets[0].len() {
-        return Err(PyAssertionError::new_err(
-            "Number of offsets does not match number of diagonals",
-        ));
-    }
-    if hamiltonian_diagonal.len() != hamiltonian_offset.len() {
-        return Err(PyAssertionError::new_err(
-            "Number of offsets does not match number of diagonals",
-        ));
-    }
-    if operators_diagonals[0][0].len() != hamiltonian_diagonal[0].len()
-        || hamiltonian_diagonal[0].len() != initial_state.len()
-    {
-        return Err(PyAssertionError::new_err(
-            "Bad Hamiltonian or operator size",
-        ));
-    }
-
-    let shape = [initial_state.len(), initial_state.len()];
-    let noise = FullNoise::from_banded(
-        &operators_diagonals
-            .iter()
-            .zip(operators_offsets.iter())
-            .map(|(diagonals, offsets)| BandedArray::from_sparse(diagonals, offsets, &shape))
-            .collect::<Vec<_>>(),
-    );
-    let system = SSESystem {
-        noise,
-        hamiltonian: BandedArray::from_sparse(&hamiltonian_diagonal, &hamiltonian_offset, &shape),
-    };
-
-    let initial_state = Array1::from(initial_state);
-
-    Ok(config.simulate_system(&initial_state, &system))
-}
-
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -265,6 +216,5 @@ fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_sse_bra_ket, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_banded, m)?)?;
     m.add_class::<SimulationConfig>()?;
-    m.add_function(wrap_pyfunction!(solve_sse_localized, m)?)?;
     Ok(())
 }

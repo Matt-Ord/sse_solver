@@ -1,8 +1,10 @@
 use core::f64;
+use std::collections::HashMap;
 
-use ndarray::{s, Array1, Array2};
+use ndarray::{s, Array1, Array2, Axis};
 use ndarray_linalg::{Eigh, Norm, UPLO};
 use num_complex::Complex;
+use rand::seq::SliceRandom;
 use rand::Rng;
 use rand_distr::{Distribution, WeightedIndex};
 
@@ -100,29 +102,32 @@ fn get_weighted_state_vector(
         .unwrap()
 }
 
-fn generate_random_num(p: &[f64]) -> usize {
-    let dist = WeightedIndex::new(p).unwrap();
-    let mut rng = rand::thread_rng();
-    dist.sample(&mut rng)
-}
-
 fn select_random_localized_state(states: &Array2<Complex<f64>>) -> Array1<Complex<f64>> {
     let mut op = calculate_inner_products(states);
     op /= Complex {
         re: op.norm(),
         im: 0_f64,
     };
-    //put op in 2d array
-    let (mut probabilities, eigenstates) = op.eigh(UPLO::Lower).unwrap();
-    probabilities /= probabilities.iter().sum::<f64>();
-    let idx = generate_random_num(&probabilities.into_raw_vec());
-    let mut transformation = eigenstates.slice(s![idx, ..]).to_owned();
+
+    let (probabilities, eigenstates) = op.eigh(UPLO::Lower).unwrap();
+    let prob_eigen_map: Vec<(_, f64)> = eigenstates
+        .axis_iter(Axis(0))
+        .zip(probabilities.into_iter())
+        .map(|b| b)
+        .collect();
+    let mut rng = rand::thread_rng();
+    let mut transformation = prob_eigen_map
+        .choose_weighted(&mut rng, |item| item.1)
+        .unwrap()
+        .0
+        .to_owned();
     transformation /= Complex {
         re: 2_f64.sqrt(),
         im: 0_f64,
     };
     get_weighted_state_vector(states, &transformation)
 }
+
 pub struct LocalizedSolver<T: SDESystem, S: Solver<T>> {
     _ty: std::marker::PhantomData<S>,
     _ty2: std::marker::PhantomData<T>,
@@ -132,13 +137,13 @@ impl<T: SDESystem, S: Solver<T>> Solver<T> for LocalizedSolver<T, S> {
     fn step(state: &Array1<Complex<f64>>, system: &T, t: f64, dt: f64) -> Array1<Complex<f64>> {
         let n_realizations = 2;
 
-        let mut use_state = Array2::zeros((n_realizations, state.len()));
+        let mut state = Array2::zeros((n_realizations, state.len()));
         for i in 0..n_realizations {
-            use_state
+            state
                 .slice_mut(s![i, ..])
                 .assign(&(state + &S::step(state, system, t, dt)));
         }
-        select_random_localized_state(&use_state)
+        select_random_localized_state(&state)
     }
 }
 
