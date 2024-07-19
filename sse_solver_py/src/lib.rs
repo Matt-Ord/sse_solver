@@ -13,7 +13,7 @@ use sse_solver::{
     system::SDESystem,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Hash)]
 enum SSEMethod {
     Euler,
     NormalizedEuler,
@@ -23,10 +23,15 @@ enum SSEMethod {
 
 #[pyclass]
 struct SimulationConfig {
+    #[pyo3(get, set)]
     n: usize,
+    #[pyo3(get, set)]
     step: usize,
+    #[pyo3(get, set)]
     dt: f64,
+    #[pyo3(get, set)]
     n_trajectories: usize,
+    #[pyo3(get, set)]
     n_realizations: usize,
     method: SSEMethod,
 }
@@ -57,6 +62,17 @@ impl SimulationConfig {
             n_trajectories,
             method: method_enum,
             n_realizations,
+        }
+    }
+
+    #[getter]
+    fn method(&self)-> String{
+        match self.method {
+          SSEMethod::Euler => "Euler",
+            SSEMethod::NormalizedEuler=> "NormalizedEuler",
+            SSEMethod::Milsten => "Milsten",
+          SSEMethod::Order2ExplicitWeak => "Order2ExplicitWeak",
+           
         }
     }
 }
