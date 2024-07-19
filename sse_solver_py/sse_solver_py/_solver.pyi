@@ -1,3 +1,5 @@
+from typing import Self
+
 from ._sse_method import SSEMethod
 
 def solve_sse(
@@ -34,3 +36,11 @@ class SimulationConfig:
         n_realizations: int = 1,
         method: SSEMethod,
     ) -> None: ...
+
+    n: int
+    step: int
+    dt: float
+    n_trajectories: int
+    n_realizations: int
+    @property
+    def method(self: Self) -> SSEMethod: ...
