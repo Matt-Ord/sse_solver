@@ -66,13 +66,12 @@ impl SimulationConfig {
     }
 
     #[getter]
-    fn method(&self)-> String{
+    fn method(&self) -> String {
         match self.method {
-          SSEMethod::Euler => "Euler",
-            SSEMethod::NormalizedEuler=> "NormalizedEuler",
-            SSEMethod::Milsten => "Milsten",
-          SSEMethod::Order2ExplicitWeak => "Order2ExplicitWeak",
-           
+            SSEMethod::Euler => "Euler".to_owned(),
+            SSEMethod::NormalizedEuler => "NormalizedEuler".to_owned(),
+            SSEMethod::Milsten => "Milsten".to_owned(),
+            SSEMethod::Order2ExplicitWeak => "Order2ExplicitWeak".to_owned(),
         }
     }
 }
