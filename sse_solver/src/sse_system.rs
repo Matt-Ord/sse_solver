@@ -35,7 +35,7 @@ pub trait Noise {
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-struct FullNoiseSource<T: Tensor, U: Tensor> {
+struct FullNoiseSource<T, U> {
     // Uses the convention taken from https://doi.org/10.1103/PhysRevA.66.012108
     // However we multiply L by a factor of i
     // L -> iL
@@ -193,7 +193,7 @@ impl<T: Dot<Array1<Complex<f64>>, Output = Array1<Complex<f64>>>> Tensor for T {
 /// `S_n = A_n |Ket_n> <Bra_n|`
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct FullNoise<T: Tensor, U: Tensor>(Vec<FullNoiseSource<T, U>>);
+pub struct FullNoise<T, U>(Vec<FullNoiseSource<T, U>>);
 
 impl<T: Tensor, U: Tensor> Noise for FullNoise<T, U> {
     #[inline]
@@ -227,7 +227,7 @@ impl<T: Tensor, U: Tensor> Noise for FullNoise<T, U> {
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct SSESystem<H: Tensor, N: Noise> {
+pub struct SSESystem<H, N> {
     pub hamiltonian: H,
     pub noise: N,
 }

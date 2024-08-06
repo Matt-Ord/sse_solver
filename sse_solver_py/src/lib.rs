@@ -5,13 +5,15 @@ use num_complex::Complex;
 use pyo3::{exceptions::PyAssertionError, prelude::*};
 use sse_solver::{
     solvers::{
-        EulerSolver, LocalizedSolver, MilstenSolver, NormalizedEulerSolver,
-        Order2ExplicitWeakSolver, Solver,
+        EulerSolver, MilstenSolver, NormalizedEulerSolver, Order2ExplicitWeakSolver, Solver,
     },
     sparse::BandedArray,
     sse_system::{FullNoise, SSESystem},
     system::SDESystem,
 };
+
+#[cfg(feature = "localized")]
+use sse_solver::solvers::LocalizedSolver;
 
 #[derive(Clone, Copy, Hash)]
 enum SSEMethod {
@@ -86,11 +88,15 @@ impl SimulationConfig {
             (1, SSEMethod::Euler) => {
                 EulerSolver::default().solve(initial_state, system, self.n, self.step, self.dt)
             }
-            (n_realizations, SSEMethod::Euler) => LocalizedSolver {
-                solver: EulerSolver::default(),
-                n_realizations,
+            (n_realizations, SSEMethod::Euler) => {
+                #[cfg(feature = "localized")]
+                return LocalizedSolver {
+                    solver: EulerSolver::default(),
+                    n_realizations,
+                }
+                .solve(initial_state, system, self.n, self.step, self.dt);
+                panic!()
             }
-            .solve(initial_state, system, self.n, self.step, self.dt),
             (1, SSEMethod::NormalizedEuler) => NormalizedEulerSolver::default().solve(
                 initial_state,
                 system,
@@ -98,27 +104,39 @@ impl SimulationConfig {
                 self.step,
                 self.dt,
             ),
-            (n_realizations, SSEMethod::NormalizedEuler) => LocalizedSolver {
-                solver: EulerSolver::default(),
-                n_realizations,
+            (n_realizations, SSEMethod::NormalizedEuler) => {
+                #[cfg(feature = "localized")]
+                return LocalizedSolver {
+                    solver: EulerSolver::default(),
+                    n_realizations,
+                }
+                .solve(initial_state, system, self.n, self.step, self.dt);
+                panic!()
             }
-            .solve(initial_state, system, self.n, self.step, self.dt),
             (1, SSEMethod::Milsten) => {
                 MilstenSolver {}.solve(initial_state, system, self.n, self.step, self.dt)
             }
-            (n_realizations, SSEMethod::Milsten) => LocalizedSolver {
-                solver: MilstenSolver {},
-                n_realizations,
+            (n_realizations, SSEMethod::Milsten) => {
+                #[cfg(feature = "localized")]
+                return LocalizedSolver {
+                    solver: MilstenSolver {},
+                    n_realizations,
+                }
+                .solve(initial_state, system, self.n, self.step, self.dt);
+                panic!()
             }
-            .solve(initial_state, system, self.n, self.step, self.dt),
             (1, SSEMethod::Order2ExplicitWeak) => {
                 Order2ExplicitWeakSolver {}.solve(initial_state, system, self.n, self.step, self.dt)
             }
-            (n_realizations, SSEMethod::Order2ExplicitWeak) => LocalizedSolver {
-                solver: Order2ExplicitWeakSolver {},
-                n_realizations,
+            (n_realizations, SSEMethod::Order2ExplicitWeak) => {
+                #[cfg(feature = "localized")]
+                return LocalizedSolver {
+                    solver: Order2ExplicitWeakSolver {},
+                    n_realizations,
+                }
+                .solve(initial_state, system, self.n, self.step, self.dt);
+                panic!()
             }
-            .solve(initial_state, system, self.n, self.step, self.dt),
         }
     }
 
