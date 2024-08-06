@@ -5,12 +5,14 @@ edition = "2021"
 
 [dependencies]
 num-complex = { version = "0.4.5" }
-ndarray = { version = "0.15.6" }
+ndarray = { version = "0.15" }
 rand = "0.8.5"
 rand_distr = "0.4.3"
 serde = { version = "1.0.201", features = ["derive"], optional = true }
 ndarray-linalg = "0.16.0"
+rustfft = "6.2.0"
 
 [features]
 default = []
 serde = ["dep:serde", "num-complex/serde", "ndarray/serde"]
+localized = []

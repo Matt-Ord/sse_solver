@@ -1,7 +1,7 @@
-use ndarray::{s, Array1, Array2, Axis};
-use ndarray_linalg::{Eigh, Norm, UPLO};
+use ndarray::Array1;
+use ndarray_linalg::Norm;
 use num_complex::Complex;
-use rand::seq::SliceRandom;
+
 use rand::Rng;
 
 use crate::{
@@ -9,51 +9,12 @@ use crate::{
     system::{SDEStep, SDESystem},
 };
 
-pub trait Solver {
-    fn step<T: SDESystem>(
-        &self,
-        state: &Array1<Complex<f64>>,
-        system: &T,
-        t: f64,
-        dt: f64,
-    ) -> Array1<Complex<f64>>;
-
-    fn integrate<T: SDESystem>(
-        &self,
-        state: &Array1<Complex<f64>>,
-        system: &T,
-        current_t: &mut f64,
-        n_step: usize,
-        dt: f64,
-    ) -> Array1<Complex<f64>> {
-        let mut out = state.clone();
-        for _n in 0..n_step {
-            out = self.step(&out, system, *current_t, dt);
-            *current_t += dt;
-        }
-        out
-    }
-    #[allow(clippy::cast_precision_loss)]
-    fn solve<T: SDESystem>(
-        &self,
-        initial_state: &Array1<Complex<f64>>,
-        system: &T,
-        n: usize,
-        step: usize,
-        dt: f64,
-    ) -> Array2<Complex<f64>> {
-        let mut out = Array2::zeros([0, initial_state.len()]);
-        let mut current = initial_state.to_owned();
-        let mut current_t = 0f64;
-        for _step_n in 1..n {
-            out.push_row(current.view()).unwrap();
-            current = self.integrate(&current, system, &mut current_t, step, dt);
-        }
-        out.push_row(current.view()).unwrap();
-
-        out
-    }
-}
+pub mod solver;
+pub use solver::*;
+#[cfg(feature = "localized")]
+pub mod localized;
+#[cfg(feature = "localized")]
+pub use localized::*;
 
 #[derive(Default)]
 pub struct EulerSolver {}
@@ -82,82 +43,6 @@ impl Solver for EulerSolver {
         };
 
         state + system.get_step(&step, state, t)
-    }
-}
-
-fn calculate_inner_products(states: &Array2<Complex<f64>>) -> Array2<Complex<f64>> {
-    let n = states.nrows();
-    let mut result = Array2::<Complex<f64>>::zeros((n, n));
-
-    for i in 0..n {
-        for j in 0..n {
-            let row_i = states.slice(s![i, ..]);
-            let row_j = states.slice(s![j, ..]);
-            let dot_product = row_i.dot(&row_j);
-            result[[i, j]] = dot_product;
-        }
-    }
-    result
-}
-
-fn get_weighted_state_vector(
-    state_list_data: &Array2<Complex<f64>>,
-    weights: &Array1<Complex<f64>>,
-) -> Array1<Complex<f64>> {
-    state_list_data
-        .rows()
-        .into_iter()
-        .zip(weights)
-        .map(|(v, w)| &v * *w)
-        .reduce(|a, b| a + b)
-        .unwrap()
-}
-
-fn select_random_localized_state(states: &Array2<Complex<f64>>) -> Array1<Complex<f64>> {
-    let mut op = calculate_inner_products(states);
-    op /= Complex {
-        re: op.norm(),
-        im: 0_f64,
-    };
-
-    let (probabilities, eigenstates) = op.eigh(UPLO::Lower).unwrap();
-
-    let mut rng = rand::thread_rng();
-    let mut transformation = eigenstates
-        .axis_iter(Axis(0))
-        .zip(probabilities)
-        .collect::<Vec<(_, f64)>>()
-        .choose_weighted(&mut rng, |item| item.1)
-        .unwrap()
-        .0
-        .to_owned();
-
-    transformation /= Complex {
-        re: 2_f64.sqrt(),
-        im: 0_f64,
-    };
-    get_weighted_state_vector(states, &transformation)
-}
-pub struct LocalizedSolver<S: Solver> {
-    pub solver: S,
-    pub n_realizations: usize,
-}
-
-impl<S: Solver> Solver for LocalizedSolver<S> {
-    fn step<T: SDESystem>(
-        &self,
-        state: &Array1<Complex<f64>>,
-        system: &T,
-        t: f64,
-        dt: f64,
-    ) -> Array1<Complex<f64>> {
-        let mut states = Array2::zeros((self.n_realizations, state.len()));
-        for i in 0..self.n_realizations {
-            states
-                .slice_mut(s![i, ..])
-                .assign(&(state + &self.solver.step(state, system, t, dt)));
-        }
-        select_random_localized_state(&states)
     }
 }
 
