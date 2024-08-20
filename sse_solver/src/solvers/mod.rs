@@ -241,7 +241,7 @@ impl Solver for Order2ExplicitWeakSolver {
             for (r, (u_plus_supporting_state, dwr)) in
                 u_plus_supporting_states.iter().zip(&noise).enumerate()
             {
-                let pair_dw = (dwj * dwr + v[(r, j)]) / sqrt_dt;
+                let pair_dw = (dwj * dwr + v[(j, r)]) / sqrt_dt;
                 if j == r {
                     out += &system.get_incoherent_step(
                         j,
@@ -271,7 +271,7 @@ impl Solver for Order2ExplicitWeakSolver {
             for (r, (u_minus_supporting_state, dwr)) in
                 u_minus_supporting_states.iter().zip(&noise).enumerate()
             {
-                let pair_dw = (dwj * dwr + v[(r, j)]) / sqrt_dt;
+                let pair_dw = (dwj * dwr + v[(j, r)]) / sqrt_dt;
                 if j == r {
                     // R supporting value terms
                     out += &system.get_incoherent_step(
@@ -372,19 +372,9 @@ impl Solver for Order2ExplicitWeakSolverRedux {
             .map(|incoherent| state - (incoherent * sqrt_dt))
             .collect::<Vec<_>>();
 
-        // H_+-^k = Y_n + a(Y_n) dt +- b^j \sqrt(dt)
-        let h_plus = h_bar_plus
-            .iter()
-            .map(|h_bar| h_bar + (&operators.coherent * dt))
-            .collect::<Vec<_>>();
-        let h_minus = h_bar_minus
-            .iter()
-            .map(|h_bar| h_bar + (&operators.coherent * dt))
-            .collect::<Vec<_>>();
-
         // Y_n+1 = Y_n + (a(Y_n) + a(H_0)) dt / 2 + ...
         let mut out = state
-            + ((operators.coherent
+            + ((&operators.coherent
                 + system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, &h0, t))
                 * (dt / 2.0));
 
@@ -396,8 +386,12 @@ impl Solver for Order2ExplicitWeakSolverRedux {
                 // + b^k(H_-^l) * (1/4) * (w_k - (w_k w_l + Vkl)/sqrt_dt)
                 // +- b^k(Y_n) * (1/2 *w_k) (plus if k=l, else minus)
                 let dj = (dw[k] * dw[l] + dv[(k, l)]) / sqrt_dt;
-                let h_plus_type_support = if k == l { &h_plus[l] } else { &h_bar_plus[l] };
-                let h_minus_type_support = if k == l { &h_minus[l] } else { &h_bar_minus[l] };
+                let h_plus_type_support = if k == l {
+                    // H_+-^k = Y_n + a(Y_n) dt +- b^j \sqrt(dt)
+                    &(&h_bar_plus[l] + (&operators.coherent * dt))
+                } else {
+                    &h_bar_plus[l]
+                };
                 out += &system.get_incoherent_step(
                     k,
                     Complex {
@@ -407,6 +401,13 @@ impl Solver for Order2ExplicitWeakSolverRedux {
                     h_plus_type_support,
                     t,
                 );
+
+                let h_minus_type_support = if k == l {
+                    // H_+-^k = Y_n + a(Y_n) dt +- b^j \sqrt(dt)s
+                    &(&h_bar_minus[l] + (&operators.coherent * dt))
+                } else {
+                    &h_bar_minus[l]
+                };
                 out += &system.get_incoherent_step(
                     k,
                     Complex {
