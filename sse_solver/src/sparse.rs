@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use ndarray::{linalg::Dot, Array1, Array2};
 use num_complex::Complex;
 use rand_distr::num_traits;
 
+use rustfft::{Fft, FftNum, FftPlanner};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -60,20 +63,6 @@ impl<T: Copy> BandedArray<T> {
             diagonals: self.diagonals.clone(),
             offsets: self.offsets.clone(),
             shape: [self.shape[1], self.shape[0]],
-        }
-    }
-}
-impl<T: num_complex::ComplexFloat> TransposedBandedArray<T> {
-    #[must_use]
-    pub fn conj(&self) -> TransposedBandedArray<T> {
-        TransposedBandedArray {
-            diagonals: self
-                .diagonals
-                .iter()
-                .map(|d| d.iter().map(|i| i.conj()).collect())
-                .collect(),
-            offsets: self.offsets.clone(),
-            shape: self.shape,
         }
     }
 }
@@ -218,6 +207,21 @@ impl<
     }
 }
 
+impl<T: num_complex::ComplexFloat> TransposedBandedArray<T> {
+    #[must_use]
+    pub fn conj(&self) -> TransposedBandedArray<T> {
+        TransposedBandedArray {
+            diagonals: self
+                .diagonals
+                .iter()
+                .map(|d| d.iter().map(|i| i.conj()).collect())
+                .collect(),
+            offsets: self.offsets.clone(),
+            shape: self.shape,
+        }
+    }
+}
+
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FactorizedArray<T> {
@@ -268,6 +272,95 @@ impl<T> FactorizedArray<T> {
             amplitude,
             bra,
             ket,
+        }
+    }
+}
+
+#[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+/// Represents a scattering operator of the form
+/// ```A(x) + C(p)B(x)```
+/// This allows us to use the split operator method to improve performance
+pub struct SplitScatteringArray<T> {
+    a: Array1<T>,
+    b: Array1<T>,
+    c: Array1<T>,
+    n_states: usize,
+}
+
+impl<T> SplitScatteringArray<T> {
+    #[must_use]
+    pub fn try_from_parts(
+        a: Array1<T>,
+        b: Array1<T>,
+        c: Array1<T>,
+    ) -> Option<SplitScatteringArray<T>> {
+        if a.len() != b.len() || a.len() != c.len() {
+            return None;
+        }
+
+        Some(SplitScatteringArray {
+            n_states: a.len(),
+            a,
+            b,
+            c,
+        })
+    }
+    #[must_use]
+    /// Build a split scattering matrix from parts
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the length of parts are not equal
+    pub fn from_parts(a: Array1<T>, b: Array1<T>, c: Array1<T>) -> SplitScatteringArray<T> {
+        SplitScatteringArray::try_from_parts(a, b, c).expect("Parts must have the same length")
+    }
+}
+
+pub struct PlannedSplitScatteringArray<T> {
+    inner: SplitScatteringArray<Complex<T>>,
+    pub forward_plan: Arc<dyn Fft<T>>,
+    pub inverse_plan: Arc<dyn Fft<T>>,
+}
+
+impl Dot<Array1<Complex<f64>>> for SplitScatteringArray<Complex<f64>> {
+    type Output = Array1<Complex<f64>>;
+
+    #[inline]
+    fn dot(&self, rhs: &Array1<Complex<f64>>) -> Self::Output {
+        PlannedSplitScatteringArray::from(self.to_owned()).dot(rhs)
+    }
+}
+
+impl Dot<Array1<Complex<f64>>> for PlannedSplitScatteringArray<f64> {
+    type Output = Array1<Complex<f64>>;
+
+    #[inline]
+    fn dot(&self, rhs: &Array1<Complex<f64>>) -> Self::Output {
+        assert!(self.inner.n_states == rhs.len());
+
+        let mut b_vec = &self.inner.b * rhs;
+
+        self.forward_plan.process(b_vec.as_slice_mut().unwrap());
+
+        let mut cb_vec = &self.inner.c * b_vec;
+
+        self.inverse_plan.process(cb_vec.as_slice_mut().unwrap());
+
+        cb_vec + (&self.inner.a * rhs)
+    }
+}
+
+impl<T: FftNum> From<SplitScatteringArray<Complex<T>>> for PlannedSplitScatteringArray<T> {
+    fn from(value: SplitScatteringArray<Complex<T>>) -> Self {
+        let mut planner = FftPlanner::new();
+        let forward_plan = planner.plan_fft_forward(value.n_states);
+        let inverse_plan = planner.plan_fft_inverse(value.n_states);
+
+        Self {
+            inner: value,
+            forward_plan,
+            inverse_plan,
         }
     }
 }
