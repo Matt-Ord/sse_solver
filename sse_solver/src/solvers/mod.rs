@@ -182,10 +182,16 @@ impl Solver for Order2ExplicitWeakSolver {
             n: system.n_incoherent(),
         });
 
+        // let noise = rng
+        //     .sample_iter::<Complex<_>, _>(StandardComplexNormal)
+        //     .map(|d| d * sqrt_dt)
+        //     .take(system.n_incoherent())
+        //     .collect::<Vec<_>>();
+
         let noise = rng
-            .sample_iter::<Complex<_>, _>(StandardComplexNormal)
-            .map(|d| d * sqrt_dt)
+            .sample_iter(WDistribution::new(dt))
             .take(system.n_incoherent())
+            .map(|d| Complex { re: d, im: 0.0 })
             .collect::<Vec<_>>();
 
         let parts = system.get_parts(state, t);
@@ -212,7 +218,7 @@ impl Solver for Order2ExplicitWeakSolver {
             &y_supporting_state,
             t,
         );
-        // 1/2 dt a(Y) + 1/2 \sum_j b^j dw^j (1 - N_incoherent)
+        // 1/2 dt a(Y) + 1/2 \sum_j b^j dw^j (2 - N_incoherent)
         out += &T::get_step_from_parts(
             &parts,
             &SDEStep {
@@ -223,7 +229,7 @@ impl Solver for Order2ExplicitWeakSolver {
                 #[allow(clippy::cast_precision_loss)]
                 incoherent: noise
                     .iter()
-                    .map(|dw| 0.5 * dw * (1.0 - (system.n_incoherent() as f64 - 1.0)))
+                    .map(|dw| 0.5 * dw * (2.0 - system.n_incoherent() as f64))
                     .collect(),
             },
         );
@@ -246,6 +252,7 @@ impl Solver for Order2ExplicitWeakSolver {
                     out += &system.get_incoherent_step(
                         j,
                         0.25f64 * (dwj + pair_dw),
+                        // U bar plus
                         &((&operators.coherent * dt) + u_plus_supporting_state),
                         t,
                     );
@@ -277,6 +284,7 @@ impl Solver for Order2ExplicitWeakSolver {
                     out += &system.get_incoherent_step(
                         j,
                         0.25f64 * (dwj - pair_dw),
+                        // U bar minus
                         &((&operators.coherent * dt) + u_minus_supporting_state),
                         t,
                     );
@@ -376,7 +384,7 @@ impl Solver for Order2ExplicitWeakSolverRedux {
         let mut out = state
             + ((&operators.coherent
                 + system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, &h0, t))
-                * (dt / 2.0));
+                * (dt * 0.5));
 
         for k in 0..system.n_incoherent() {
             for l in 0..system.n_incoherent() {
