@@ -226,6 +226,21 @@ impl<T: Tensor, U: Tensor> Noise for FullNoise<T, U> {
     }
 }
 
+/// Represents The Stochastic Shrodinger SDE System
+///
+/// ```latex
+/// X_t = X_{t0} + \int_{t0}^{t} a(s,X_s) ds + \sum_1^m \int_{t0}^{t} b^j(s, X_s) dW_s^j
+/// ```
+///
+/// The coherent term
+/// ```latex
+/// a(s,X) =
+/// ```
+///
+/// The incoherent term
+/// ```latex
+/// b^j(s, X) = (L_j - <L_j>)|X> where |X> is the wavefunction |\psi>
+/// ```
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SSESystem<H, N> {
     pub hamiltonian: H,
@@ -245,7 +260,7 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
 
     type Parts<'a> = SSEParts<'a>;
     type IncoherentParts<'a> = SSEIncoherentParts<'a>;
-    type CoherentParts<'a> = SSEParts<'a>;
+    type CoherentPart<'a> = SSEParts<'a>;
     type IncoherentPart<'a> = SSEIncoherentPart<'a>;
 
     #[inline]
@@ -280,11 +295,11 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
         }
     }
     #[inline]
-    fn get_coherent_parts<'a>(
+    fn get_coherent_part<'a>(
         &self,
         state: &'a Array1<Complex<f64>>,
         t: f64,
-    ) -> Self::CoherentParts<'a> {
+    ) -> Self::CoherentPart<'a> {
         self.get_parts(state, t)
     }
 
@@ -345,7 +360,7 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
     }
     #[inline]
     fn get_coherent_step_from_parts(
-        parts: &Self::CoherentParts<'_>,
+        parts: &Self::CoherentPart<'_>,
         coherent_step: Complex<f64>,
     ) -> Array1<Complex<f64>> {
         let mut diagonal = Complex::default();
@@ -372,7 +387,7 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
         out
     }
     #[inline]
-    fn operators_from_parts(&self, parts: &Self::Parts<'_>) -> SDEOperators {
+    fn operators_from_parts(parts: &Self::Parts<'_>) -> SDEOperators {
         SDEOperators {
             coherent: Self::get_coherent_step_from_parts(parts, Complex { re: 1f64, im: 0f64 }),
             incoherent: parts

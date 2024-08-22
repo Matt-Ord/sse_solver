@@ -9,7 +9,7 @@ use rand::Rng;
 use sse_solver::{
     distribution::StandardComplexNormal,
     solvers::{EulerSolver, Order2ExplicitWeakSolver, Solver},
-    sparse::BandedArray,
+    sparse::{BandedArray, PlannedSplitScatteringArray, SplitScatteringArray},
     sse_system::{FullNoise, SSESystem},
 };
 extern crate test;
@@ -478,7 +478,7 @@ fn banded_array_dot_benchmark_approx() {
 #[allow(dead_code)]
 fn banded_array_dot_benchmark() {
     let n_bands = 3;
-    let shape = [100, 100];
+    let shape = [4096, 4096];
 
     let a = BandedArray::<Complex<f64>>::from_sparse(
         &Vec::from_iter(
@@ -488,11 +488,67 @@ fn banded_array_dot_benchmark() {
         &shape,
     );
     let b = Array1::<Complex<f64>>::ones([shape[1]]);
-    for _i in 0..100000000 {
+    for _i in 0..1000000 {
         #[allow(clippy::unit_arg)]
         test::black_box(&a.dot(&b));
     }
 }
+
+#[allow(dead_code)]
+fn split_array_dot_benchmark() {
+    let shape = [4096, 4096];
+
+    let a: PlannedSplitScatteringArray<_> = SplitScatteringArray::<Complex<f64>>::from_parts(
+        Array1::zeros(shape[0]),
+        Array1::zeros(shape[0]),
+        Array1::zeros(shape[0]),
+    )
+    .into();
+    let b = Array1::<Complex<f64>>::ones([shape[1]]);
+    for _i in 0..1000000 {
+        #[allow(clippy::unit_arg)]
+        test::black_box(&a.dot(&b));
+    }
+}
+#[allow(dead_code)]
+fn split_array_dot_without_scratch_benchmark() {
+    // With scratch takes about 3/4 the time, this is independent of shape
+    let shape = [4096, 4096];
+
+    let a: PlannedSplitScatteringArray<_> = SplitScatteringArray::<Complex<f64>>::from_parts(
+        Array1::zeros(shape[0]),
+        Array1::zeros(shape[0]),
+        Array1::zeros(shape[0]),
+    )
+    .into();
+    let b = Array1::<Complex<f64>>::ones([shape[1]]);
+    for _i in 0..10000000 {
+        #[allow(clippy::unit_arg)]
+        test::black_box(a.forward_plan.process(&mut b.to_vec()));
+    }
+}
+#[allow(dead_code)]
+fn split_array_dot_with_scratch_benchmark() {
+    // With scratch takes about 3/4 the time, this is independent of shape
+    let shape = [4096, 4096];
+
+    let a: PlannedSplitScatteringArray<_> = SplitScatteringArray::<Complex<f64>>::from_parts(
+        Array1::zeros(shape[0]),
+        Array1::zeros(shape[0]),
+        Array1::zeros(shape[0]),
+    )
+    .into();
+    let b = Array1::<Complex<f64>>::ones([shape[1]]);
+    let mut scratch = vec![Complex::default(); a.forward_plan.get_inplace_scratch_len()];
+    for _i in 0..10000000 {
+        #[allow(clippy::unit_arg)]
+        test::black_box(
+            a.forward_plan
+                .process_with_scratch(&mut b.to_vec(), &mut scratch),
+        );
+    }
+}
+
 #[allow(dead_code)]
 fn banded_array_transposed_dot_benchmark() {
     let n_bands = 3;
@@ -549,5 +605,5 @@ fn mul_rand_array() {
     test::black_box(mul_bench(lhs, rhs, test::black_box(500000)));
 }
 fn main() {
-    second_order_solver_benchmark_sparse()
+    split_array_dot_benchmark()
 }

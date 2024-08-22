@@ -5,7 +5,7 @@ use num_complex::Complex;
 use rand::Rng;
 
 use crate::{
-    distribution::{StandardComplexNormal, VMatrix},
+    distribution::{StandardComplexNormal, V as VDistribution, W as WDistribution},
     system::{SDEStep, SDESystem},
 };
 
@@ -35,7 +35,7 @@ impl Solver for EulerSolver {
         let sqt_dt = dt.sqrt();
         let step = SDEStep {
             coherent: Complex { re: dt, im: 0f64 },
-            incoherent: rng
+            incoherent: &rng
                 .sample_iter::<Complex<_>, _>(StandardComplexNormal)
                 .map(|d| d * sqt_dt)
                 .take(system.n_incoherent())
@@ -98,7 +98,7 @@ impl Solver for MilstenSolver {
         // Y_k(n+1) = Y_k(n) + a dt + \sum_j \frac{1}{2}  b^j(t, Y(n))_k dW^j - sqrt(dt)(b^j(t, Y(n))_k)
         let simple_step = SDEStep {
             coherent: Complex { re: dt, im: 0f64 },
-            incoherent: noise.iter().map(|d| 0.5f64 * (d + sqrt_dt)).collect(),
+            incoherent: &noise.iter().map(|d| 0.5f64 * (d + sqrt_dt)).collect(),
         };
         out += &T::get_step_from_parts(&parts, &simple_step);
 
@@ -109,7 +109,7 @@ impl Solver for MilstenSolver {
         // \bar{Y}(n) = Y(n) + \sum_j b^j dW^j
         let second_supporting_step = SDEStep {
             coherent: Complex { re: dt, im: 0f64 },
-            incoherent: (0..system.n_incoherent())
+            incoherent: &(0..system.n_incoherent())
                 .map(|_| Complex {
                     re: sqrt_dt,
                     im: 0f64,
@@ -136,7 +136,7 @@ impl Solver for MilstenSolver {
         // \bar{Y}(n) = Y(n) + \sum_j b^j dW^j
         let first_supporting_step = SDEStep {
             coherent: Complex { re: dt, im: 0f64 },
-            incoherent: noise.iter().map(|d| (d + 0.5f64 * sqrt_dt)).collect(),
+            incoherent: &noise.iter().map(|d| (d + 0.5f64 * sqrt_dt)).collect(),
         };
         let mut first_supporting_state =
             state + T::get_step_from_parts(&parts, &first_supporting_step);
@@ -177,14 +177,19 @@ impl Solver for Order2ExplicitWeakSolver {
         let sqrt_dt = dt.sqrt();
 
         let mut rng = rand::thread_rng();
-        let v = &rng.sample(VMatrix {
+        let v = &rng.sample(VDistribution {
             dt,
             n: system.n_incoherent(),
         });
 
-        let noise = rng
-            .sample_iter::<Complex<_>, _>(StandardComplexNormal)
-            .map(|d| d * sqrt_dt)
+        // let noise = rng
+        //     .sample_iter::<Complex<_>, _>(StandardComplexNormal)
+        //     .map(|d| d * sqrt_dt)
+        //     .take(system.n_incoherent())
+        //     .collect::<Vec<_>>();
+
+        let noise = &rng
+            .sample_iter(WDistribution::new(dt))
             .take(system.n_incoherent())
             .collect::<Vec<_>>();
 
@@ -198,7 +203,6 @@ impl Solver for Order2ExplicitWeakSolver {
         };
 
         let y_supporting_state = state + T::get_step_from_parts(&parts, &y_supporting_step);
-        let noise = y_supporting_step.incoherent;
 
         // Calculate the final state
 
@@ -221,14 +225,14 @@ impl Solver for Order2ExplicitWeakSolver {
                     im: 0f64,
                 },
                 #[allow(clippy::cast_precision_loss)]
-                incoherent: noise
+                incoherent: &noise
                     .iter()
-                    .map(|dw| dw * (0.5 - (0.5 * (system.n_incoherent() as f64 - 1.0) / sqrt_dt)))
+                    .map(|dw| 0.5 * dw * (2.0 - system.n_incoherent() as f64))
                     .collect(),
             },
         );
 
-        let operators = system.operators_from_parts(&parts);
+        let operators = T::operators_from_parts(&parts);
 
         let u_plus_supporting_states = operators
             .incoherent
@@ -239,19 +243,21 @@ impl Solver for Order2ExplicitWeakSolver {
         // 1/4 \sum_j \sum_r b^j(Ur+) dw^j + (dw^j dw^r + vrj) / sqrt(dt)
         for (j, dwj) in noise.iter().enumerate() {
             for (r, (u_plus_supporting_state, dwr)) in
-                u_plus_supporting_states.iter().zip(&noise).enumerate()
+                u_plus_supporting_states.iter().zip(noise).enumerate()
             {
+                let pair_dw = (dwj * dwr + v[(j, r)]) / sqrt_dt;
                 if j == r {
                     out += &system.get_incoherent_step(
                         j,
-                        0.25f64 * (dwj + (((dwj * dwj) + v[[r, j]]) / sqrt_dt)),
+                        0.25f64 * (dwj + pair_dw),
+                        // U bar plus
                         &((&operators.coherent * dt) + u_plus_supporting_state),
                         t,
                     );
                 } else {
                     out += &system.get_incoherent_step(
                         j,
-                        0.25f64 * (dwj + ((dwj * dwr) + v[[r, j]])) / sqrt_dt,
+                        0.25f64 * (dwj + pair_dw),
                         u_plus_supporting_state,
                         t,
                     );
@@ -268,13 +274,15 @@ impl Solver for Order2ExplicitWeakSolver {
         // 1/4 \sum_j \sum_r b^j(Ur-) dw^j - (dw^j dw^r + vrj) / sqrt(dt)
         for (j, dwj) in noise.iter().enumerate() {
             for (r, (u_minus_supporting_state, dwr)) in
-                u_minus_supporting_states.iter().zip(&noise).enumerate()
+                u_minus_supporting_states.iter().zip(noise).enumerate()
             {
+                let pair_dw = (dwj * dwr + v[(j, r)]) / sqrt_dt;
                 if j == r {
                     // R supporting value terms
                     out += &system.get_incoherent_step(
                         j,
-                        0.25f64 * (dwj - (((dwj * dwj) + v[[r, j]]) / sqrt_dt)),
+                        0.25f64 * (dwj - pair_dw),
+                        // U bar minus
                         &((&operators.coherent * dt) + u_minus_supporting_state),
                         t,
                     );
@@ -282,7 +290,7 @@ impl Solver for Order2ExplicitWeakSolver {
                     // U supporting value terms
                     out += &system.get_incoherent_step(
                         j,
-                        0.25f64 * (dwj - ((dwj * dwr) + v[[r, j]])) / sqrt_dt,
+                        0.25f64 * (dwj - pair_dw),
                         u_minus_supporting_state,
                         t,
                     );
@@ -307,5 +315,106 @@ impl Solver for Order2ImplicitWeakSolver {
         _dt: f64,
     ) -> Array1<Complex<f64>> {
         todo!()
+    }
+}
+
+/// The Order 2 General Weak Taylor Scheme defined in 5.1 of
+/// <https://www.jstor.org/stable/27862707>
+///
+/// This method scales poorly for large n operators compared
+/// to the other methods discussed in the paper
+pub struct Order2ExplicitWeakSolverRedux {}
+
+impl Solver for Order2ExplicitWeakSolverRedux {
+    #[allow(clippy::too_many_lines)]
+    fn step<T: SDESystem>(
+        &self,
+        state: &Array1<Complex<f64>>,
+        system: &T,
+        t: f64,
+        dt: f64,
+    ) -> Array1<Complex<f64>> {
+        let mut rng = rand::thread_rng();
+        // Sample the V distribution
+        let dv = &rng.sample(VDistribution {
+            dt,
+            n: system.n_incoherent(),
+        });
+
+        // Sample the W distribution (this is called I in the paper)
+        let dw = &rng
+            .sample_iter(WDistribution::new(dt))
+            .take(system.n_incoherent())
+            .collect::<Vec<_>>();
+
+        let parts = system.get_parts(state, t);
+
+        // Y_n + a(Y_n) dt + \sum_j b^j w_j
+        let h0_step = T::get_step_from_parts(
+            &parts,
+            &SDEStep {
+                coherent: Complex { re: dt, im: 0f64 },
+                incoherent: dw,
+            },
+        );
+
+        // Build out the supporting states required for the calculation
+
+        // H_0 = Y_n + a(Y_n) dt + b^j w_j
+        let h0 = state + h0_step;
+
+        let operators = T::operators_from_parts(&parts);
+
+        let sqrt_dt = dt.sqrt();
+        // H bar_+-^k = Y_n +- b^j \sqrt(dt)
+        let h_bar_plus = operators
+            .incoherent
+            .iter()
+            .map(|incoherent| state + (incoherent * sqrt_dt))
+            .collect::<Vec<_>>();
+        let h_bar_minus = operators
+            .incoherent
+            .iter()
+            .map(|incoherent| state - (incoherent * sqrt_dt))
+            .collect::<Vec<_>>();
+
+        // Y_n+1 = Y_n + (a(Y_n) + a(H_0)) dt / 2 + ...
+        let mut out = state
+            + ((&operators.coherent
+                + system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, &h0, t))
+                * (dt * 0.5));
+
+        for k in 0..system.n_incoherent() {
+            for l in 0..system.n_incoherent() {
+                // Add H - type increment
+                // If k=l this uses a H support, otherwise H bar
+                //  (b^k(H_+^l) * (1/4) * (w_k + (w_k w_l + Vkl)/sqrt_dt)
+                // + b^k(H_-^l) * (1/4) * (w_k - (w_k w_l + Vkl)/sqrt_dt)
+                // +- b^k(Y_n) * (1/2 *w_k) (plus if k=l, else minus)
+                let dj = (dw[k] * dw[l] + dv[(k, l)]) / sqrt_dt;
+                let h_plus_type_support = if k == l {
+                    // H_+-^k = Y_n + a(Y_n) dt +- b^j \sqrt(dt)
+                    &(&h_bar_plus[l] + (&operators.coherent * dt))
+                } else {
+                    &h_bar_plus[l]
+                };
+                out += &system.get_incoherent_step(k, 0.25 * (dw[k] + dj), h_plus_type_support, t);
+
+                let h_minus_type_support = if k == l {
+                    // H_+-^k = Y_n + a(Y_n) dt +- b^j \sqrt(dt)s
+                    &(&h_bar_minus[l] + (&operators.coherent * dt))
+                } else {
+                    &h_bar_minus[l]
+                };
+                out += &system.get_incoherent_step(k, 0.25 * (dw[k] - dj), h_minus_type_support, t);
+
+                if k == l {
+                    out += &(&operators.incoherent[k] * (0.5 * dw[k]));
+                } else {
+                    out -= &(&operators.incoherent[k] * (0.5 * dw[k]));
+                }
+            }
+        }
+        out
     }
 }
