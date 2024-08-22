@@ -87,8 +87,8 @@ impl Distribution<Complex<f64>> for W {
     #[inline]
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Complex<f64> {
         Complex {
-            re: rng.sample(self),
-            im: rng.sample(self),
+            re: rng.sample::<f64, _>(self) / std::f64::consts::SQRT_2,
+            im: rng.sample::<f64, _>(self) / std::f64::consts::SQRT_2,
         }
     }
 }
