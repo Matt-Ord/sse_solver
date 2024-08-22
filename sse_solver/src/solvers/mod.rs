@@ -212,7 +212,7 @@ impl Solver for Order2ExplicitWeakSolver {
             &y_supporting_state,
             t,
         );
-        // 1/2 dt a(Y) + 1/2 \sum_j b^j dw^j (2 - N_incoherent)
+        // 1/2 dt a(Y) + 1/2 \sum_j b^j dw^j (1 - N_incoherent)
         out += &T::get_step_from_parts(
             &parts,
             &SDEStep {
@@ -223,7 +223,7 @@ impl Solver for Order2ExplicitWeakSolver {
                 #[allow(clippy::cast_precision_loss)]
                 incoherent: noise
                     .iter()
-                    .map(|dw| dw * (0.5 - (0.5 * (system.n_incoherent() as f64 - 1.0) / sqrt_dt)))
+                    .map(|dw| 0.5 * dw * (1.0 - (system.n_incoherent() as f64 - 1.0)))
                     .collect(),
             },
         );
