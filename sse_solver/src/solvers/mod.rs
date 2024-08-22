@@ -191,7 +191,6 @@ impl Solver for Order2ExplicitWeakSolver {
         let noise = rng
             .sample_iter(WDistribution::new(dt))
             .take(system.n_incoherent())
-            .map(|d| Complex { re: d, im: 0.0 })
             .collect::<Vec<_>>();
 
         let parts = system.get_parts(state, t);

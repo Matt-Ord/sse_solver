@@ -82,3 +82,13 @@ impl Distribution<f64> for W {
         self.values[self.weights.sample(rng)]
     }
 }
+
+impl Distribution<Complex<f64>> for W {
+    #[inline]
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Complex<f64> {
+        Complex {
+            re: rng.sample(self),
+            im: rng.sample(self),
+        }
+    }
+}
