@@ -35,7 +35,7 @@ impl Solver for EulerSolver {
         let sqt_dt = dt.sqrt();
         let step = SDEStep {
             coherent: Complex { re: dt, im: 0f64 },
-            incoherent: rng
+            incoherent: &rng
                 .sample_iter::<Complex<_>, _>(StandardComplexNormal)
                 .map(|d| d * sqt_dt)
                 .take(system.n_incoherent())
@@ -98,7 +98,7 @@ impl Solver for MilstenSolver {
         // Y_k(n+1) = Y_k(n) + a dt + \sum_j \frac{1}{2}  b^j(t, Y(n))_k dW^j - sqrt(dt)(b^j(t, Y(n))_k)
         let simple_step = SDEStep {
             coherent: Complex { re: dt, im: 0f64 },
-            incoherent: noise.iter().map(|d| 0.5f64 * (d + sqrt_dt)).collect(),
+            incoherent: &noise.iter().map(|d| 0.5f64 * (d + sqrt_dt)).collect(),
         };
         out += &T::get_step_from_parts(&parts, &simple_step);
 
@@ -109,7 +109,7 @@ impl Solver for MilstenSolver {
         // \bar{Y}(n) = Y(n) + \sum_j b^j dW^j
         let second_supporting_step = SDEStep {
             coherent: Complex { re: dt, im: 0f64 },
-            incoherent: (0..system.n_incoherent())
+            incoherent: &(0..system.n_incoherent())
                 .map(|_| Complex {
                     re: sqrt_dt,
                     im: 0f64,
@@ -136,7 +136,7 @@ impl Solver for MilstenSolver {
         // \bar{Y}(n) = Y(n) + \sum_j b^j dW^j
         let first_supporting_step = SDEStep {
             coherent: Complex { re: dt, im: 0f64 },
-            incoherent: noise.iter().map(|d| (d + 0.5f64 * sqrt_dt)).collect(),
+            incoherent: &noise.iter().map(|d| (d + 0.5f64 * sqrt_dt)).collect(),
         };
         let mut first_supporting_state =
             state + T::get_step_from_parts(&parts, &first_supporting_step);
@@ -188,7 +188,7 @@ impl Solver for Order2ExplicitWeakSolver {
         //     .take(system.n_incoherent())
         //     .collect::<Vec<_>>();
 
-        let noise = rng
+        let noise = &rng
             .sample_iter(WDistribution::new(dt))
             .take(system.n_incoherent())
             .collect::<Vec<_>>();
@@ -203,7 +203,6 @@ impl Solver for Order2ExplicitWeakSolver {
         };
 
         let y_supporting_state = state + T::get_step_from_parts(&parts, &y_supporting_step);
-        let noise = y_supporting_step.incoherent;
 
         // Calculate the final state
 
@@ -226,7 +225,7 @@ impl Solver for Order2ExplicitWeakSolver {
                     im: 0f64,
                 },
                 #[allow(clippy::cast_precision_loss)]
-                incoherent: noise
+                incoherent: &noise
                     .iter()
                     .map(|dw| 0.5 * dw * (2.0 - system.n_incoherent() as f64))
                     .collect(),
@@ -244,7 +243,7 @@ impl Solver for Order2ExplicitWeakSolver {
         // 1/4 \sum_j \sum_r b^j(Ur+) dw^j + (dw^j dw^r + vrj) / sqrt(dt)
         for (j, dwj) in noise.iter().enumerate() {
             for (r, (u_plus_supporting_state, dwr)) in
-                u_plus_supporting_states.iter().zip(&noise).enumerate()
+                u_plus_supporting_states.iter().zip(noise).enumerate()
             {
                 let pair_dw = (dwj * dwr + v[(j, r)]) / sqrt_dt;
                 if j == r {
@@ -275,7 +274,7 @@ impl Solver for Order2ExplicitWeakSolver {
         // 1/4 \sum_j \sum_r b^j(Ur-) dw^j - (dw^j dw^r + vrj) / sqrt(dt)
         for (j, dwj) in noise.iter().enumerate() {
             for (r, (u_minus_supporting_state, dwr)) in
-                u_minus_supporting_states.iter().zip(&noise).enumerate()
+                u_minus_supporting_states.iter().zip(noise).enumerate()
             {
                 let pair_dw = (dwj * dwr + v[(j, r)]) / sqrt_dt;
                 if j == r {
@@ -355,7 +354,7 @@ impl Solver for Order2ExplicitWeakSolverRedux {
             &parts,
             &SDEStep {
                 coherent: Complex { re: dt, im: 0f64 },
-                incoherent: dw.iter().map(|d| Complex { re: *d, im: 0f64 }).collect(),
+                incoherent: dw,
             },
         );
 
@@ -399,15 +398,7 @@ impl Solver for Order2ExplicitWeakSolverRedux {
                 } else {
                     &h_bar_plus[l]
                 };
-                out += &system.get_incoherent_step(
-                    k,
-                    Complex {
-                        re: 0.25 * (dw[k] + dj),
-                        im: 0.0,
-                    },
-                    h_plus_type_support,
-                    t,
-                );
+                out += &system.get_incoherent_step(k, 0.25 * (dw[k] + dj), h_plus_type_support, t);
 
                 let h_minus_type_support = if k == l {
                     // H_+-^k = Y_n + a(Y_n) dt +- b^j \sqrt(dt)s
@@ -415,15 +406,7 @@ impl Solver for Order2ExplicitWeakSolverRedux {
                 } else {
                     &h_bar_minus[l]
                 };
-                out += &system.get_incoherent_step(
-                    k,
-                    Complex {
-                        re: 0.25 * (dw[k] - dj),
-                        im: 0.0,
-                    },
-                    h_minus_type_support,
-                    t,
-                );
+                out += &system.get_incoherent_step(k, 0.25 * (dw[k] - dj), h_minus_type_support, t);
 
                 if k == l {
                     out += &(&operators.incoherent[k] * (0.5 * dw[k]));

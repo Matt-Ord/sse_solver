@@ -1,9 +1,9 @@
 use ndarray::Array1;
 use num_complex::Complex;
 
-pub struct SDEStep {
+pub struct SDEStep<'a> {
     pub coherent: Complex<f64>,
-    pub incoherent: Vec<Complex<f64>>,
+    pub incoherent: &'a Vec<Complex<f64>>,
 }
 
 pub struct SDEOperators {
