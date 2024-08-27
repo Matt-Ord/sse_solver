@@ -5,7 +5,8 @@ use num_complex::Complex;
 use pyo3::{exceptions::PyAssertionError, prelude::*};
 use sse_solver::{
     solvers::{
-        EulerSolver, MilstenSolver, NormalizedEulerSolver, Order2ExplicitWeakSolverRedux, Solver,
+        EulerSolver, MilstenSolver, NormalizedEulerSolver, Order2ExplicitWeakR5Solver,
+        Order2ExplicitWeakSolverRedux, Solver,
     },
     sparse::BandedArray,
     sse_system::{FullNoise, SSESystem},
@@ -21,6 +22,7 @@ enum SSEMethod {
     NormalizedEuler,
     Milsten,
     Order2ExplicitWeak,
+    Order2ExplicitWeakR5,
 }
 
 #[pyclass]
@@ -55,6 +57,7 @@ impl SimulationConfig {
             "NormalizedEuler" => SSEMethod::NormalizedEuler,
             "Milsten" => SSEMethod::Milsten,
             "Order2ExplicitWeak" => SSEMethod::Order2ExplicitWeak,
+            "Order2ExplicitWeakR5" => SSEMethod::Order2ExplicitWeakR5,
             _ => panic!(),
         };
         SimulationConfig {
@@ -74,6 +77,7 @@ impl SimulationConfig {
             SSEMethod::NormalizedEuler => "NormalizedEuler".to_owned(),
             SSEMethod::Milsten => "Milsten".to_owned(),
             SSEMethod::Order2ExplicitWeak => "Order2ExplicitWeak".to_owned(),
+            SSEMethod::Order2ExplicitWeakR5 => "Order2ExplicitWeakR5".to_owned(),
         }
     }
 }
@@ -136,6 +140,22 @@ impl SimulationConfig {
                 #[cfg(feature = "localized")]
                 return LocalizedSolver {
                     solver: Order2ExplicitWeakSolverRedux {},
+                    n_realizations,
+                }
+                .solve(initial_state, system, self.n, self.step, self.dt);
+                panic!()
+            }
+            (1, SSEMethod::Order2ExplicitWeakR5) => Order2ExplicitWeakR5Solver {}.solve(
+                initial_state,
+                system,
+                self.n,
+                self.step,
+                self.dt,
+            ),
+            (n_realizations, SSEMethod::Order2ExplicitWeakR5) => {
+                #[cfg(feature = "localized")]
+                return LocalizedSolver {
+                    solver: Order2ExplicitWeakR5Solver {},
                     n_realizations,
                 }
                 .solve(initial_state, system, self.n, self.step, self.dt);
