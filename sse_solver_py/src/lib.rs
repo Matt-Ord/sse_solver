@@ -7,7 +7,8 @@ use sse_solver::solvers::{Measurement, OperatorMeasurement, StateMeasurement};
 use sse_solver::sparse::PlannedSplitScatteringArray;
 use sse_solver::{
     solvers::{
-        EulerSolver, MilstenSolver, NormalizedSolver, Order2ExplicitWeakSolverRedux, Solver,
+        EulerSolver, MilstenSolver, NormalizedSolver, Order2ExplicitWeakR5Solver,
+        Order2ExplicitWeakSolverRedux, Solver,
     },
     sparse::{BandedArray, SplitScatteringArray},
     system::sse::{FullNoise, SSESystem},
@@ -24,6 +25,8 @@ enum SSEMethod {
     Milsten,
     Order2ExplicitWeak,
     NormalizedOrder2ExplicitWeak,
+    Order2ExplicitWeakR5,
+    NormalizedOrder2ExplicitWeakR5,
 }
 
 #[pyclass]
@@ -59,6 +62,8 @@ impl SimulationConfig {
             "Milsten" => SSEMethod::Milsten,
             "Order2ExplicitWeak" => SSEMethod::Order2ExplicitWeak,
             "NormalizedOrder2ExplicitWeak" => SSEMethod::NormalizedOrder2ExplicitWeak,
+            "Order2ExplicitWeakR5" => SSEMethod::Order2ExplicitWeakR5,
+            "NormalizedOrder2ExplicitWeakR5" => SSEMethod::NormalizedOrder2ExplicitWeakR5,
             _ => panic!(),
         };
         SimulationConfig {
@@ -79,6 +84,10 @@ impl SimulationConfig {
             SSEMethod::Milsten => "Milsten".to_owned(),
             SSEMethod::Order2ExplicitWeak => "Order2ExplicitWeak".to_owned(),
             SSEMethod::NormalizedOrder2ExplicitWeak => "NormalizedOrder2ExplicitWeak".to_owned(),
+            SSEMethod::Order2ExplicitWeakR5 => "Order2ExplicitWeakR5".to_owned(),
+            SSEMethod::NormalizedOrder2ExplicitWeakR5 => {
+                "NormalizedOrder2ExplicitWeakR5".to_owned()
+            }
         }
     }
 }
@@ -201,6 +210,56 @@ impl SimulationConfig {
                 #[cfg(feature = "localized")]
                 return LocalizedSolver {
                     solver: NormalizedSolver(Order2ExplicitWeakSolverRedux {}),
+                    n_realizations,
+                }
+                .solve(
+                    initial_state,
+                    system,
+                    measurement,
+                    self.n,
+                    self.step,
+                    self.dt,
+                );
+                panic!()
+            }
+            (1, SSEMethod::Order2ExplicitWeakR5) => Order2ExplicitWeakR5Solver {}.solve(
+                initial_state,
+                system,
+                measurement,
+                self.n,
+                self.step,
+                self.dt,
+            ),
+            (n_realizations, SSEMethod::Order2ExplicitWeakR5) => {
+                #[cfg(feature = "localized")]
+                return LocalizedSolver {
+                    solver: Order2ExplicitWeakR5Solver {},
+                    n_realizations,
+                }
+                .solve(
+                    initial_state,
+                    system,
+                    measurement,
+                    self.n,
+                    self.step,
+                    self.dt,
+                );
+                panic!()
+            }
+            (1, SSEMethod::NormalizedOrder2ExplicitWeakR5) => {
+                NormalizedSolver(Order2ExplicitWeakR5Solver {}).solve(
+                    initial_state,
+                    system,
+                    measurement,
+                    self.n,
+                    self.step,
+                    self.dt,
+                )
+            }
+            (n_realizations, SSEMethod::NormalizedOrder2ExplicitWeakR5) => {
+                #[cfg(feature = "localized")]
+                return LocalizedSolver {
+                    solver: NormalizedSolver(Order2ExplicitWeakR5Solver {}),
                     n_realizations,
                 }
                 .solve(

@@ -55,40 +55,174 @@ impl Distribution<Array2<f64>> for V {
     }
 }
 
-/// The W distribution, according to eqn 14.2.4
-/// in 10.1007/978-3-662-12616-5
-/// P(W = \pm \sqrt{3dt}) = 1/6
-/// P(W = 0) = 1/3
-pub struct W {
-    weights: WeightedIndex<i32>,
-    values: [f64; 3],
+/// A general distribution with N fixed values
+/// sampled by a given weight
+pub struct NPoint<const N: usize, T> {
+    pub weights: WeightedIndex<i32>,
+    pub values: [T; N],
 }
 
-impl W {
-    #[must_use]
-    pub fn new(dt: f64) -> Self {
-        let w_plus = (3.0 * dt).sqrt();
-        W {
-            // Safety: [1, 1, 4] are valid weights
-            weights: unsafe { WeightedIndex::new([1, 1, 4]).unwrap_unchecked() },
-            values: [w_plus, -w_plus, 0.0],
-        }
-    }
-}
-
-impl Distribution<f64> for W {
+impl<const N: usize, T: Copy> Distribution<T> for NPoint<N, T> {
     #[inline]
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> f64 {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
         self.values[self.weights.sample(rng)]
     }
 }
 
-impl Distribution<Complex<f64>> for W {
+/// The W distribution, according to eqn 14.2.4
+/// in 10.1007/978-3-662-12616-5
+/// P(W = \pm \sqrt{3dt}) = 1/6
+/// P(W = 0) = 1/3
+pub struct ThreePointW(NPoint<3, f64>);
+
+impl Distribution<f64> for ThreePointW {
+    #[inline]
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> f64 {
+        self.0.sample(rng)
+    }
+}
+
+impl ThreePointW {
+    #[must_use]
+    pub fn new(dt: f64) -> Self {
+        let w_plus = (3.0 * dt).sqrt();
+        Self(NPoint {
+            // Safety: [1, 1, 4] are valid weights
+            weights: unsafe { WeightedIndex::new([1, 1, 4]).unwrap_unchecked() },
+            values: [w_plus, -w_plus, 0.0],
+        })
+    }
+}
+
+/// The Complex W distribution, as an extension of eqn 14.2.4
+/// in 10.1007/978-3-662-12616-5
+///
+/// we extend this
+/// P(W = \pm \sqrt{3dt}) = 1/6
+/// P(W = 0) = 1/3
+pub struct NinePointComplexW(NPoint<9, Complex<f64>>);
+
+impl Distribution<Complex<f64>> for NinePointComplexW {
     #[inline]
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Complex<f64> {
-        Complex {
-            re: rng.sample::<f64, _>(self) / std::f64::consts::SQRT_2,
-            im: rng.sample::<f64, _>(self) / std::f64::consts::SQRT_2,
-        }
+        self.0.sample(rng)
+    }
+}
+
+impl NinePointComplexW {
+    #[must_use]
+    pub fn new(dt: f64) -> Self {
+        let w_plus = (3.0 * dt).sqrt() / std::f64::consts::SQRT_2;
+
+        Self(NPoint {
+            // Safety: [4, 4, 16, 1, 1, 4, 1, 1, 4] are valid weights
+            weights: unsafe { WeightedIndex::new([4, 4, 16, 1, 1, 4, 1, 1, 4]).unwrap_unchecked() },
+            values: [
+                Complex {
+                    re: w_plus,
+                    im: 0f64,
+                },
+                Complex {
+                    re: -w_plus,
+                    im: 0f64,
+                },
+                Complex { re: 0f64, im: 0f64 },
+                Complex {
+                    re: w_plus,
+                    im: w_plus,
+                },
+                Complex {
+                    re: -w_plus,
+                    im: w_plus,
+                },
+                Complex {
+                    re: 0f64,
+                    im: w_plus,
+                },
+                Complex {
+                    re: w_plus,
+                    im: -w_plus,
+                },
+                Complex {
+                    re: -w_plus,
+                    im: -w_plus,
+                },
+                Complex {
+                    re: 0f64,
+                    im: -w_plus,
+                },
+            ],
+        })
+    }
+}
+
+/// The two point W distribution
+///
+/// This is the I tilde distribution as defined in 5.7 of
+/// in <https://www.jstor.org/stable/pdf/27862707.pdf>
+///
+/// P(W = \pm \sqrt{dt}) = 1/2
+pub struct TwoPointW(NPoint<2, f64>);
+
+impl Distribution<f64> for TwoPointW {
+    #[inline]
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> f64 {
+        self.0.sample(rng)
+    }
+}
+
+impl TwoPointW {
+    #[must_use]
+    pub fn new(dt: f64) -> Self {
+        let w_plus = dt.sqrt();
+        Self(NPoint {
+            // Safety: [1, 1] are valid weights
+            weights: unsafe { WeightedIndex::new([1, 1]).unwrap_unchecked() },
+            values: [w_plus, -w_plus],
+        })
+    }
+}
+
+/// The four point W distribution
+///
+/// This is the generalization of I tilde distribution as defined in 5.7 of
+/// in <https://www.jstor.org/stable/pdf/27862707.pdf> to complex noise
+///
+/// P(W = \pm \sqrt{dt}) = 1/2
+pub struct FourPointComplexW(NPoint<4, Complex<f64>>);
+
+impl Distribution<Complex<f64>> for FourPointComplexW {
+    #[inline]
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Complex<f64> {
+        self.0.sample(rng)
+    }
+}
+
+impl FourPointComplexW {
+    #[must_use]
+    pub fn new(dt: f64) -> Self {
+        let w_plus = dt.sqrt() / std::f64::consts::SQRT_2;
+        Self(NPoint {
+            // Safety: [1, 1, 1, 1] are valid weights
+            weights: unsafe { WeightedIndex::new([1, 1, 1, 1]).unwrap_unchecked() },
+            values: [
+                Complex {
+                    re: w_plus,
+                    im: w_plus,
+                },
+                Complex {
+                    re: -w_plus,
+                    im: w_plus,
+                },
+                Complex {
+                    re: w_plus,
+                    im: -w_plus,
+                },
+                Complex {
+                    re: -w_plus,
+                    im: -w_plus,
+                },
+            ],
+        })
     }
 }

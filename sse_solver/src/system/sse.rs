@@ -402,7 +402,7 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
         out
     }
     #[inline]
-    fn operators_from_parts(parts: &Self::Parts<'_>) -> SDEOperators {
+    fn get_operators_from_parts(parts: &Self::Parts<'_>) -> SDEOperators {
         SDEOperators {
             coherent: Self::get_coherent_step_from_parts(parts, Complex { re: 1f64, im: 0f64 }),
             incoherent: parts
