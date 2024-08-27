@@ -1,11 +1,15 @@
 use ndarray::Array1;
-use ndarray_linalg::Norm;
+use ndarray_linalg::{Norm, Scalar};
 use num_complex::Complex;
 
 use rand::Rng;
+use rand_distr::Distribution;
 
 use crate::{
-    distribution::{StandardComplexNormal, V as VDistribution, W as WDistribution},
+    distribution::{
+        FourPointComplexW as FourPointComplexWDistribution, NinePointComplexW as WDistribution,
+        StandardComplexNormal, V as VDistribution,
+    },
     system::{SDEStep, SDESystem},
 };
 
@@ -232,7 +236,7 @@ impl Solver for Order2ExplicitWeakSolver {
             },
         );
 
-        let operators = T::operators_from_parts(&parts);
+        let operators = T::get_operators_from_parts(&parts);
 
         let u_plus_supporting_states = operators
             .incoherent
@@ -326,7 +330,6 @@ impl Solver for Order2ImplicitWeakSolver {
 pub struct Order2ExplicitWeakSolverRedux {}
 
 impl Solver for Order2ExplicitWeakSolverRedux {
-    #[allow(clippy::too_many_lines)]
     fn step<T: SDESystem>(
         &self,
         state: &Array1<Complex<f64>>,
@@ -360,7 +363,7 @@ impl Solver for Order2ExplicitWeakSolverRedux {
                 },
             );
 
-        let operators = T::operators_from_parts(&parts);
+        let operators = T::get_operators_from_parts(&parts);
 
         let sqrt_dt = dt.sqrt();
         // H bar_+-^k = Y_n +- b^j \sqrt(dt)
@@ -413,5 +416,278 @@ impl Solver for Order2ExplicitWeakSolverRedux {
             }
         }
         state + step
+    }
+}
+
+/// The R5 Solver defined in
+/// <https://www.jstor.org/stable/27862707>
+///
+/// See 5.4 for the SRK formula
+/// See Table 5.2 for the various weights
+///
+/// Note in this implimentation we assume a(t) = a(0)
+pub struct Order2ExplicitWeakR5Solver {}
+
+impl Order2ExplicitWeakR5Solver {
+    // Note: for explicit solvers, A and B are lower diagonals
+    pub const A0: [[f64; 3]; 3] = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [25.0 / 144.0, 35.0 / 144.0, 0.0],
+    ];
+    pub const A1: [[f64; 3]; 3] = [[0.0, 0.0, 0.0], [0.25, 0.0, 0.0], [0.25, 0.0, 0.0]];
+    pub const A2: [[f64; 3]; 3] = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]];
+
+    pub const B0: [[f64; 3]; 3] = [
+        [0.0, 0.0, 0.0],
+        [1.0 / 3.0, 0.0, 0.0],
+        [-5.0 / 6.0, 0.0, 0.0],
+    ];
+    pub const B1: [[f64; 3]; 3] = [[0.0, 0.0, 0.0], [0.5, 0.0, 0.0], [-0.5, 0.0, 0.0]];
+    pub const B2: [[f64; 3]; 3] = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]];
+
+    pub const C0: [f64; 3] = [0.0, 1.0, 5.0 / 12.0];
+    pub const C1: [f64; 3] = [0.0, 0.25, 0.25];
+    pub const C2: [f64; 3] = [0.0, 0.0, 0.0];
+
+    pub const ALPHA: [f64; 3] = [0.1, 3.0 / 14.0, 24.0 / 35.0];
+
+    pub const BETA1: [f64; 3] = [1.0, -1.0, -1.0];
+    pub const BETA2: [f64; 3] = [0.0, 1.0, -1.0];
+    pub const BETA3: [f64; 3] = [0.5, -0.25, -0.25];
+    pub const BETA4: [f64; 3] = [0.0, 0.5, -0.5];
+}
+
+#[inline]
+fn get_supporting_state_lazy(
+    state: &Array1<Complex<f64>>,
+    increment: &[(&Array1<Complex<f64>>, f64)],
+) -> Array1<Complex<f64>> {
+    let mut out = state.clone();
+    for (s, ds) in increment {
+        if (ds - 0.0f64).abs() < 1e-100 {
+            out += &(Complex { re: *ds, im: 0.0 } * *s);
+        }
+    }
+    out
+}
+
+impl Solver for Order2ExplicitWeakR5Solver {
+    #[allow(clippy::too_many_lines, clippy::similar_names)]
+    fn step<T: SDESystem>(
+        &self,
+        state: &Array1<Complex<f64>>,
+        system: &T,
+        t: f64,
+        dt: f64,
+    ) -> Array1<Complex<f64>> {
+        let rng = rand::thread_rng();
+
+        let i_hat = FourPointComplexWDistribution::new(dt)
+            .sample_iter(rng.clone())
+            .take(system.n_incoherent())
+            .collect::<Vec<_>>();
+
+        let i_bar = FourPointComplexWDistribution::new(dt)
+            .sample_iter(rng.clone())
+            .take(system.n_incoherent())
+            .collect::<Vec<_>>();
+
+        let sqrt_dt = dt.sqrt();
+
+        let h_00 = state;
+
+        // a(t, H_0^0) dt
+        let h_00_step = &system.get_operators(h_00, t);
+        let h_00_coherent = &h_00_step.coherent;
+        //NOTE: here since H_k0 == H_00, we just use incoherent ops of H_00
+        let h_k0_incoherent = &h_00_step.incoherent;
+        let h_hat_k0_incoherent = &h_00_step.incoherent;
+
+        let h_01 = state
+            + &(Complex {
+                re: Self::A0[1][0] * dt,
+                im: 0.0,
+            } * h_00_coherent)
+            + (h_k0_incoherent
+                .iter()
+                .zip(&i_hat)
+                .map(|(b, i)| (i * Self::B0[1][0]) * b)
+                .fold(Array1::<Complex<f64>>::zeros(state.len()), |a, b| a + &b));
+
+        let h_k1 = h_k0_incoherent
+            .iter()
+            .map(|b_0| {
+                get_supporting_state_lazy(
+                    state,
+                    &[
+                        (h_00_coherent, Self::A1[1][0] * dt),
+                        (b_0, Self::B1[1][0] * sqrt_dt),
+                    ],
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let h_hat_k1 = (0..system.n_incoherent())
+            .map(|k| {
+                state
+                    + &(Complex {
+                        re: Self::A2[1][0] * dt,
+                        im: 0.0,
+                    } * h_00_coherent)
+                    + h_k0_incoherent.iter().enumerate().fold(
+                        Array1::<Complex<f64>>::zeros(state.len()),
+                        |a, (l, b)| {
+                            if l == k {
+                                return a;
+                            }
+                            let factor = if l > k {
+                                i_hat[k] * i_hat[l] - sqrt_dt * i_bar[k]
+                            } else {
+                                i_hat[k] * i_hat[l] + sqrt_dt * i_bar[l]
+                            };
+
+                            a + (0.5 * (Self::B2[1][0] * factor) / sqrt_dt) * b
+                        },
+                    )
+            })
+            .collect::<Vec<_>>();
+
+        let h_01_coherent = &system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, &h_01, t);
+        let h_k1_incoherent = &h_k1
+            .iter()
+            .enumerate()
+            .map(|(idx, s)| system.get_incoherent_step(idx, Complex { re: 1.0, im: 0.0 }, s, t))
+            .collect::<Vec<_>>();
+
+        let mut h_02 = get_supporting_state_lazy(
+            state,
+            &[
+                (h_00_coherent, Self::A0[2][0] * dt),
+                (h_01_coherent, Self::A0[2][1] * dt),
+                // TODO: find a way to suppoort this better...
+                // (b_0, Self::B0[2][0] * dt),
+                // (b_1, Self::B0[2][1] * dt),
+            ],
+        );
+        if Self::B0[2][0] != 0.0 {
+            h_02 += &(h_k0_incoherent
+                .iter()
+                .zip(&i_hat)
+                .map(|(b, i)| (i * Self::B0[2][0]) * b)
+                .fold(Array1::<Complex<f64>>::zeros(state.len()), |a, b| a + &b));
+        }
+        if Self::B0[2][1] != 0.0 {
+            h_02 += &(h_k1_incoherent
+                .iter()
+                .zip(&i_hat)
+                .map(|(b, i)| (i * Self::B0[2][1]) * b)
+                .fold(Array1::<Complex<f64>>::zeros(state.len()), |a, b| a + &b));
+        }
+
+        let h_k2 = h_k0_incoherent
+            .iter()
+            .zip(h_k1_incoherent)
+            .map(|(b_0, b_1)| {
+                get_supporting_state_lazy(
+                    state,
+                    &[
+                        (h_00_coherent, Self::A1[2][0] * dt),
+                        (h_01_coherent, Self::A1[2][1] * dt),
+                        (b_0, Self::B1[2][0] * dt),
+                        (b_1, Self::B1[2][1] * dt),
+                    ],
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let h_hat_k2 = (0..system.n_incoherent())
+            .map(|k| {
+                state
+                    + h_00_step.incoherent.iter().enumerate().fold(
+                        Array1::<Complex<f64>>::zeros(state.len()),
+                        |a, (l, b)| {
+                            // NOTE: here since H_k0 == H_00, we just use incoherent ops of H_00
+                            if l == k {
+                                return a;
+                            }
+                            let factor = if l > k {
+                                i_hat[k] * i_hat[l] - sqrt_dt * i_bar[k]
+                            } else {
+                                i_hat[k] * i_hat[l] + sqrt_dt * i_bar[l]
+                            };
+
+                            a + (0.5 * (Self::B2[2][0] * factor) / sqrt_dt) * b
+                        },
+                    )
+            })
+            .collect::<Vec<_>>();
+
+        let h_02_coherent = &system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, &h_02, t);
+        // Y_(n+1) = Y_(n) + \sum_i alpha_i a(t_n+c_i^0h_n, H_i^0)h_n
+        let mut out = state
+            + &(Complex {
+                re: Self::ALPHA[0] * dt,
+                im: 0.0,
+            } * h_00_coherent)
+            + &(Complex {
+                re: Self::ALPHA[0] * dt,
+                im: 0.0,
+            } * h_01_coherent)
+            + &(Complex {
+                re: Self::ALPHA[0] * dt,
+                im: 0.0,
+            } * h_02_coherent);
+
+        // Y_(n+1) += \sum_i \sum_k b^k(t, H_k) (i hat_k beta_i(1) + i_k,k hat / sqrt(dt))
+        h_k0_incoherent.iter().enumerate().for_each(|(k, b_k)| {
+            let factor = (Self::BETA1[0] * i_hat[k])
+                + ((0.5 * Self::BETA2[0] / sqrt_dt) * (i_hat[k].square() - dt));
+            out += &(factor * b_k);
+        });
+
+        h_k1_incoherent.iter().enumerate().for_each(|(k, b_k)| {
+            let factor = (Self::BETA1[1] * i_hat[k])
+                + ((0.5 * Self::BETA2[1] / sqrt_dt) * (i_hat[k].square() - dt));
+            out += &(factor * b_k);
+        });
+
+        let h_k2_incoherent = h_k2
+            .iter()
+            .enumerate()
+            .map(|(idx, s)| system.get_incoherent_step(idx, Complex { re: 1.0, im: 0.0 }, s, t))
+            .collect::<Vec<_>>();
+
+        h_k2_incoherent.iter().enumerate().for_each(|(k, b_k)| {
+            let factor = (Self::BETA1[2] * i_hat[k])
+                + ((0.5 * Self::BETA2[2] / sqrt_dt) * (i_hat[k].square() - dt));
+            out += &(factor * b_k);
+        });
+
+        // Y_(n+1) += \sum_i \sum_k b^k(t, H_hat_k) (i hat_k beta_i(3) + beta_i(4)*sqrt(dt))
+        h_hat_k0_incoherent.iter().enumerate().for_each(|(k, b_k)| {
+            let factor = (Self::BETA3[0] * i_hat[k]) + (Self::BETA4[0] * sqrt_dt);
+            out += &(factor * b_k);
+        });
+        let h_hat_k1_incoherent = h_hat_k1
+            .iter()
+            .enumerate()
+            .map(|(idx, s)| system.get_incoherent_step(idx, Complex { re: 1.0, im: 0.0 }, s, t));
+
+        h_hat_k1_incoherent.enumerate().for_each(|(k, b_k)| {
+            let factor = (Self::BETA3[1] * i_hat[k]) + (Self::BETA4[1] * sqrt_dt);
+            out += &(factor * b_k);
+        });
+
+        let h_hat_k2_incoherent = h_hat_k2
+            .iter()
+            .enumerate()
+            .map(|(idx, s)| system.get_incoherent_step(idx, Complex { re: 1.0, im: 0.0 }, s, t));
+
+        h_hat_k2_incoherent.enumerate().for_each(|(k, b_k)| {
+            let factor = (Self::BETA3[2] * i_hat[k]) + (Self::BETA4[2] * sqrt_dt);
+            out += &(factor * b_k);
+        });
+        out
     }
 }

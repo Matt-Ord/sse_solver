@@ -141,5 +141,10 @@ pub trait SDESystem {
     /// The total number of incoherent terms
     fn n_incoherent(&self) -> usize;
 
-    fn operators_from_parts(parts: &Self::Parts<'_>) -> SDEOperators;
+    fn get_operators_from_parts(parts: &Self::Parts<'_>) -> SDEOperators;
+    #[inline]
+    fn get_operators(&self, state: &Array1<Complex<f64>>, t: f64) -> SDEOperators {
+        let parts = self.get_parts(state, t);
+        Self::get_operators_from_parts(&parts)
+    }
 }
