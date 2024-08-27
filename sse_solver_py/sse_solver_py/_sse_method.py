@@ -6,4 +6,6 @@ SSEMethod = Literal[
     "Milsten",
     "Order2ExplicitWeak",
     "NormalizedOrder2ExplicitWeak",
+    "Order2ExplicitWeakR5",
+    "NormalizedOrder2ExplicitWeakR5",
 ]
