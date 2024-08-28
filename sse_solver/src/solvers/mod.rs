@@ -489,7 +489,7 @@ impl Solver for Order2ExplicitWeakR5Solver {
             .take(system.n_incoherent())
             .collect::<Vec<_>>();
 
-        let i_bar = FourPointComplexWDistribution::new(dt)
+        let i_bar = NinePointComplexWDistribution::new(dt)
             .sample_iter(rng.clone())
             .take(system.n_incoherent())
             .collect::<Vec<_>>();
