@@ -505,16 +505,13 @@ impl Solver for Order2ExplicitWeakR5Solver {
         let h_k0_incoherent = &h_00_step.incoherent;
         let h_hat_k0_incoherent = &h_00_step.incoherent;
 
-        let h_01 = state
-            + &(Complex {
-                re: Self::A0[1][0] * dt,
-                im: 0.0,
-            } * h_00_coherent)
-            + (h_k0_incoherent
+        let mut h_01 = get_supporting_state_lazy(state, &[(h_00_coherent, Self::A0[1][0] * dt)]);
+        if Self::B2[1][0] != 0.0 {
+            h_k0_incoherent
                 .iter()
                 .zip(&i_hat)
-                .map(|(b, i)| (i * Self::B0[1][0]) * b)
-                .fold(Array1::<Complex<f64>>::zeros(state.len()), |a, b| a + &b));
+                .for_each(|(b, i)| h_01 += &((i * Self::B0[1][0]) * b));
+        }
 
         let h_k1 = h_k0_incoherent
             .iter()
@@ -531,22 +528,23 @@ impl Solver for Order2ExplicitWeakR5Solver {
 
         let h_hat_k1 = (0..system.n_incoherent())
             .map(|k| {
-                get_supporting_state_lazy(state, &[(h_00_coherent, Self::A2[1][0] * dt)])
-                    + h_k0_incoherent.iter().enumerate().fold(
-                        Array1::<Complex<f64>>::zeros(state.len()),
-                        |a, (l, b)| {
-                            if l == k {
-                                return a;
-                            }
-                            let factor = if l > k {
-                                i_hat[k] * i_hat[l] - sqrt_dt * i_bar[k]
-                            } else {
-                                i_hat[k] * i_hat[l] + sqrt_dt * i_bar[l]
-                            };
+                let mut out =
+                    get_supporting_state_lazy(state, &[(h_00_coherent, Self::A2[1][0] * dt)]);
+                if Self::B2[1][0] != 0.0 {
+                    h_k0_incoherent.iter().enumerate().for_each(|(l, b)| {
+                        if l == k {
+                            return;
+                        }
+                        let factor = if l > k {
+                            i_hat[k] * i_hat[l] - sqrt_dt * i_bar[k]
+                        } else {
+                            i_hat[k] * i_hat[l] + sqrt_dt * i_bar[l]
+                        };
 
-                            a + ((0.5 * Self::B2[1][0] * factor) / sqrt_dt) * b
-                        },
-                    )
+                        out += &(((0.5 * Self::B2[1][0] * factor) / sqrt_dt) * b);
+                    });
+                }
+                out
             })
             .collect::<Vec<_>>();
 
@@ -568,18 +566,16 @@ impl Solver for Order2ExplicitWeakR5Solver {
             ],
         );
         if Self::B0[2][0] != 0.0 {
-            h_02 += &(h_k0_incoherent
+            h_k0_incoherent
                 .iter()
                 .zip(&i_hat)
-                .map(|(b, i)| (i * Self::B0[2][0]) * b)
-                .fold(Array1::<Complex<f64>>::zeros(state.len()), |a, b| a + &b));
+                .for_each(|(b, i)| h_02 += &((i * Self::B0[2][0]) * b));
         }
         if Self::B0[2][1] != 0.0 {
-            h_02 += &(h_k1_incoherent
+            h_k1_incoherent
                 .iter()
                 .zip(&i_hat)
-                .map(|(b, i)| (i * Self::B0[2][1]) * b)
-                .fold(Array1::<Complex<f64>>::zeros(state.len()), |a, b| a + &b));
+                .for_each(|(b, i)| h_02 += &((i * Self::B0[2][1]) * b));
         }
 
         let h_k2 = h_k0_incoherent
@@ -600,23 +596,43 @@ impl Solver for Order2ExplicitWeakR5Solver {
 
         let h_hat_k2 = (0..system.n_incoherent())
             .map(|k| {
-                state
-                    + h_00_step.incoherent.iter().enumerate().fold(
-                        Array1::<Complex<f64>>::zeros(state.len()),
-                        |a, (l, b)| {
-                            // NOTE: here since H_k0 == H_00, we just use incoherent ops of H_00
-                            if l == k {
-                                return a;
-                            }
-                            let factor = if l > k {
-                                i_hat[k] * i_hat[l] - sqrt_dt * i_bar[k]
-                            } else {
-                                i_hat[k] * i_hat[l] + sqrt_dt * i_bar[l]
-                            };
+                let mut out = get_supporting_state_lazy(
+                    state,
+                    &[
+                        (h_00_coherent, Self::A2[2][0] * dt),
+                        (h_01_coherent, Self::A2[2][1] * dt),
+                    ],
+                );
+                if Self::B2[2][0] != 0.0 {
+                    h_k0_incoherent.iter().enumerate().for_each(|(l, b)| {
+                        if l == k {
+                            return;
+                        }
+                        let factor = if l > k {
+                            i_hat[k] * i_hat[l] - sqrt_dt * i_bar[k]
+                        } else {
+                            i_hat[k] * i_hat[l] + sqrt_dt * i_bar[l]
+                        };
 
-                            a + (0.5 * (Self::B2[2][0] * factor) / sqrt_dt) * b
-                        },
-                    )
+                        out += &(((0.5 * Self::B2[2][0] * factor) / sqrt_dt) * b);
+                    });
+                }
+
+                if Self::B2[2][1] != 0.0 {
+                    h_k1_incoherent.iter().enumerate().for_each(|(l, b)| {
+                        if l == k {
+                            return;
+                        }
+                        let factor = if l > k {
+                            i_hat[k] * i_hat[l] - sqrt_dt * i_bar[k]
+                        } else {
+                            i_hat[k] * i_hat[l] + sqrt_dt * i_bar[l]
+                        };
+
+                        out += &(((0.5 * Self::B2[2][1] * factor) / sqrt_dt) * b);
+                    });
+                }
+                out
             })
             .collect::<Vec<_>>();
 
@@ -628,11 +644,11 @@ impl Solver for Order2ExplicitWeakR5Solver {
                 im: 0.0,
             } * h_00_coherent)
             + &(Complex {
-                re: Self::ALPHA[0] * dt,
+                re: Self::ALPHA[1] * dt,
                 im: 0.0,
             } * h_01_coherent)
             + &(Complex {
-                re: Self::ALPHA[0] * dt,
+                re: Self::ALPHA[2] * dt,
                 im: 0.0,
             } * h_02_coherent);
 
