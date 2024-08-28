@@ -489,7 +489,7 @@ impl Solver for Order2ExplicitWeakR5Solver {
             .take(system.n_incoherent())
             .collect::<Vec<_>>();
 
-        let i_bar = NinePointComplexWDistribution::new(dt)
+        let i_bar = FourPointComplexWDistribution::new(dt)
             .sample_iter(rng.clone())
             .take(system.n_incoherent())
             .collect::<Vec<_>>();
@@ -536,9 +536,9 @@ impl Solver for Order2ExplicitWeakR5Solver {
                             return;
                         }
                         let factor = if l > k {
-                            i_hat[k] * i_hat[l] - sqrt_dt * i_bar[k]
+                            i_hat[k] * i_hat[l].conj() - sqrt_dt * i_bar[k]
                         } else {
-                            i_hat[k] * i_hat[l] + sqrt_dt * i_bar[l]
+                            i_hat[k] * i_hat[l].conj() + sqrt_dt * i_bar[l]
                         };
 
                         out += &(((0.5 * Self::B2[1][0] * factor) / sqrt_dt) * b);
@@ -609,9 +609,9 @@ impl Solver for Order2ExplicitWeakR5Solver {
                             return;
                         }
                         let factor = if l > k {
-                            i_hat[k] * i_hat[l] - sqrt_dt * i_bar[k]
+                            i_hat[k] * i_hat[l].conj() - sqrt_dt * i_bar[k]
                         } else {
-                            i_hat[k] * i_hat[l] + sqrt_dt * i_bar[l]
+                            i_hat[k] * i_hat[l].conj() + sqrt_dt * i_bar[l]
                         };
 
                         out += &(((0.5 * Self::B2[2][0] * factor) / sqrt_dt) * b);
@@ -624,9 +624,9 @@ impl Solver for Order2ExplicitWeakR5Solver {
                             return;
                         }
                         let factor = if l > k {
-                            i_hat[k] * i_hat[l] - sqrt_dt * i_bar[k]
+                            i_hat[k] * i_hat[l].conj() - sqrt_dt * i_bar[k]
                         } else {
-                            i_hat[k] * i_hat[l] + sqrt_dt * i_bar[l]
+                            i_hat[k] * i_hat[l].conj() + sqrt_dt * i_bar[l]
                         };
 
                         out += &(((0.5 * Self::B2[2][1] * factor) / sqrt_dt) * b);
@@ -653,17 +653,23 @@ impl Solver for Order2ExplicitWeakR5Solver {
             } * h_02_coherent);
 
         // Y_(n+1) += \sum_i \sum_k b^k(t, H_k) (i hat_k beta_i(1) + i_k,k hat / sqrt(dt))
-        h_k0_incoherent.iter().enumerate().for_each(|(k, b_k)| {
-            let factor = (Self::BETA1[0] * i_hat[k])
-                + ((0.5 * Self::BETA2[0] / sqrt_dt) * (i_hat[k].square() - dt));
-            out += &(factor * b_k);
-        });
+        h_k0_incoherent
+            .iter()
+            .zip(i_hat.iter())
+            .for_each(|(b_k, i_hat_k)| {
+                let factor = (Self::BETA1[0] * i_hat_k)
+                    + ((0.5 * Self::BETA2[0] / sqrt_dt) * (i_hat_k.abs().square() - dt));
+                out += &(factor * b_k);
+            });
 
-        h_k1_incoherent.iter().enumerate().for_each(|(k, b_k)| {
-            let factor = (Self::BETA1[1] * i_hat[k])
-                + ((0.5 * Self::BETA2[1] / sqrt_dt) * (i_hat[k].square() - dt));
-            out += &(factor * b_k);
-        });
+        h_k1_incoherent
+            .iter()
+            .zip(i_hat.iter())
+            .for_each(|(b_k, i_hat_k)| {
+                let factor = (Self::BETA1[1] * i_hat_k)
+                    + ((0.5 * Self::BETA2[1] / sqrt_dt) * (i_hat_k.abs().square() - dt));
+                out += &(factor * b_k);
+            });
 
         let h_k2_incoherent = h_k2
             .iter()
@@ -671,36 +677,46 @@ impl Solver for Order2ExplicitWeakR5Solver {
             .map(|(idx, s)| system.get_incoherent_step(idx, Complex { re: 1.0, im: 0.0 }, s, t))
             .collect::<Vec<_>>();
 
-        h_k2_incoherent.iter().enumerate().for_each(|(k, b_k)| {
-            let factor = (Self::BETA1[2] * i_hat[k])
-                + ((0.5 * Self::BETA2[2] / sqrt_dt) * (i_hat[k].square() - dt));
-            out += &(factor * b_k);
-        });
+        h_k2_incoherent
+            .iter()
+            .zip(i_hat.iter())
+            .for_each(|(b_k, i_hat_k)| {
+                let factor = (Self::BETA1[2] * i_hat_k)
+                    + ((0.5 * Self::BETA2[2] / sqrt_dt) * (i_hat_k.abs().square() - dt));
+                out += &(factor * b_k);
+            });
 
         // Y_(n+1) += \sum_i \sum_k b^k(t, H_hat_k) (i hat_k beta_i(3) + beta_i(4)*sqrt(dt))
-        h_hat_k0_incoherent.iter().enumerate().for_each(|(k, b_k)| {
-            let factor = (Self::BETA3[0] * i_hat[k]) + (Self::BETA4[0] * sqrt_dt);
-            out += &(factor * b_k);
-        });
+        h_hat_k0_incoherent
+            .iter()
+            .zip(i_hat.iter())
+            .for_each(|(b_k, i_hat_k)| {
+                let factor = (Self::BETA3[0] * i_hat_k) + (Self::BETA4[0] * sqrt_dt);
+                out += &(factor * b_k);
+            });
         let h_hat_k1_incoherent = h_hat_k1
             .iter()
             .enumerate()
             .map(|(idx, s)| system.get_incoherent_step(idx, Complex { re: 1.0, im: 0.0 }, s, t));
 
-        h_hat_k1_incoherent.enumerate().for_each(|(k, b_k)| {
-            let factor = (Self::BETA3[1] * i_hat[k]) + (Self::BETA4[1] * sqrt_dt);
-            out += &(factor * b_k);
-        });
+        h_hat_k1_incoherent
+            .zip(i_hat.iter())
+            .for_each(|(b_k, i_hat_k)| {
+                let factor = (Self::BETA3[1] * i_hat_k) + (Self::BETA4[1] * sqrt_dt);
+                out += &(factor * b_k);
+            });
 
         let h_hat_k2_incoherent = h_hat_k2
             .iter()
             .enumerate()
             .map(|(idx, s)| system.get_incoherent_step(idx, Complex { re: 1.0, im: 0.0 }, s, t));
 
-        h_hat_k2_incoherent.enumerate().for_each(|(k, b_k)| {
-            let factor = (Self::BETA3[2] * i_hat[k]) + (Self::BETA4[2] * sqrt_dt);
-            out += &(factor * b_k);
-        });
+        h_hat_k2_incoherent
+            .zip(i_hat.iter())
+            .for_each(|(b_k, i_hat_k)| {
+                let factor = (Self::BETA3[2] * i_hat_k) + (Self::BETA4[2] * sqrt_dt);
+                out += &(factor * b_k);
+            });
         out
     }
 }
