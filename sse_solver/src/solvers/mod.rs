@@ -506,7 +506,7 @@ impl Solver for Order2ExplicitWeakR5Solver {
         let h_hat_k0_incoherent = &h_00_step.incoherent;
 
         let mut h_01 = get_supporting_state_lazy(state, &[(h_00_coherent, Self::A0[1][0] * dt)]);
-        if Self::B2[1][0] != 0.0 {
+        if Self::B0[1][0] != 0.0 {
             h_k0_incoherent
                 .iter()
                 .zip(&i_hat)
