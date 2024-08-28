@@ -7,8 +7,9 @@ use rand_distr::Distribution;
 
 use crate::{
     distribution::{
-        FourPointComplexW as FourPointComplexWDistribution, NinePointComplexW as WDistribution,
-        StandardComplexNormal, V as VDistribution,
+        FourPointComplexW as FourPointComplexWDistribution,
+        NinePointComplexW as NinePointComplexWDistribution, StandardComplexNormal,
+        V as VDistribution,
     },
     system::{SDEStep, SDESystem},
 };
@@ -193,7 +194,7 @@ impl Solver for Order2ExplicitWeakSolver {
         //     .collect::<Vec<_>>();
 
         let noise = &rng
-            .sample_iter(WDistribution::new(dt))
+            .sample_iter(NinePointComplexWDistribution::new(dt))
             .take(system.n_incoherent())
             .collect::<Vec<_>>();
 
@@ -346,7 +347,7 @@ impl Solver for Order2ExplicitWeakSolverRedux {
 
         // Sample the W distribution (this is called I in the paper)
         let dw = &rng
-            .sample_iter(WDistribution::new(dt))
+            .sample_iter(NinePointComplexWDistribution::new(dt))
             .take(system.n_incoherent())
             .map(|s| Complex { re: s, im: 0.0 })
             .collect::<Vec<_>>();
@@ -483,7 +484,7 @@ impl Solver for Order2ExplicitWeakR5Solver {
     ) -> Array1<Complex<f64>> {
         let rng = rand::thread_rng();
 
-        let i_hat = FourPointComplexWDistribution::new(dt)
+        let i_hat = NinePointComplexWDistribution::new(dt)
             .sample_iter(rng.clone())
             .take(system.n_incoherent())
             .collect::<Vec<_>>();
@@ -530,11 +531,7 @@ impl Solver for Order2ExplicitWeakR5Solver {
 
         let h_hat_k1 = (0..system.n_incoherent())
             .map(|k| {
-                state
-                    + &(Complex {
-                        re: Self::A2[1][0] * dt,
-                        im: 0.0,
-                    } * h_00_coherent)
+                get_supporting_state_lazy(state, &[(h_00_coherent, Self::A2[1][0] * dt)])
                     + h_k0_incoherent.iter().enumerate().fold(
                         Array1::<Complex<f64>>::zeros(state.len()),
                         |a, (l, b)| {
@@ -547,7 +544,7 @@ impl Solver for Order2ExplicitWeakR5Solver {
                                 i_hat[k] * i_hat[l] + sqrt_dt * i_bar[l]
                             };
 
-                            a + (0.5 * (Self::B2[1][0] * factor) / sqrt_dt) * b
+                            a + ((0.5 * Self::B2[1][0] * factor) / sqrt_dt) * b
                         },
                     )
             })
