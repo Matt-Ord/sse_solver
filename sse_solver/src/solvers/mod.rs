@@ -466,7 +466,7 @@ fn get_supporting_state_lazy(
 ) -> Array1<Complex<f64>> {
     let mut out = state.clone();
     for (s, ds) in increment {
-        if (ds - 0.0f64).abs() < 1e-100 {
+        if ds.abs() > 1e-100 {
             out += &(Complex { re: *ds, im: 0.0 } * *s);
         }
     }

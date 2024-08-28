@@ -115,9 +115,33 @@ impl NinePointComplexW {
         let w_plus = (3.0 * dt).sqrt() / std::f64::consts::SQRT_2;
 
         Self(NPoint {
-            // Safety: [4, 4, 16, 1, 1, 4, 1, 1, 4] are valid weights
-            weights: unsafe { WeightedIndex::new([4, 4, 16, 1, 1, 4, 1, 1, 4]).unwrap_unchecked() },
+            // Safety: [1, 1, 4, 1, 1, 4, 4, 4, 16] are valid weights
+            weights: unsafe { WeightedIndex::new([1, 1, 4, 1, 1, 4, 4, 4, 16]).unwrap_unchecked() },
             values: [
+                Complex {
+                    re: w_plus,
+                    im: w_plus,
+                },
+                Complex {
+                    re: -w_plus,
+                    im: w_plus,
+                },
+                Complex {
+                    re: 0f64,
+                    im: w_plus,
+                },
+                Complex {
+                    re: w_plus,
+                    im: -w_plus,
+                },
+                Complex {
+                    re: -w_plus,
+                    im: -w_plus,
+                },
+                Complex {
+                    re: 0f64,
+                    im: -w_plus,
+                },
                 Complex {
                     re: w_plus,
                     im: 0f64,
@@ -127,30 +151,6 @@ impl NinePointComplexW {
                     im: 0f64,
                 },
                 Complex { re: 0f64, im: 0f64 },
-                Complex {
-                    re: w_plus,
-                    im: w_plus,
-                },
-                Complex {
-                    re: -w_plus,
-                    im: w_plus,
-                },
-                Complex {
-                    re: 0f64,
-                    im: w_plus,
-                },
-                Complex {
-                    re: w_plus,
-                    im: -w_plus,
-                },
-                Complex {
-                    re: -w_plus,
-                    im: -w_plus,
-                },
-                Complex {
-                    re: 0f64,
-                    im: -w_plus,
-                },
             ],
         })
     }
