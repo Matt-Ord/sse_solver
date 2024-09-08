@@ -498,14 +498,32 @@ impl Solver for Order2ExplicitWeakR5Solver {
 
         let h_00 = state;
 
-        // a(t, H_0^0) dt
-        let h_00_step = &system.get_operators(h_00, t);
-        let h_00_coherent = &h_00_step.coherent;
+        let h_00_coherent =
+            &system.get_coherent_step(Complex { re: dt, im: 0.0 }, h_00, t + (Self::C0[0] * dt));
         //NOTE: here since H_k0 == H_00, we just use incoherent ops of H_00
-        let h_k0_incoherent = &h_00_step.incoherent;
-        let h_hat_k0_incoherent = &h_00_step.incoherent;
+        let h_k0_incoherent = &(0..system.n_incoherent())
+            .map(|idx| {
+                system.get_incoherent_step(
+                    idx,
+                    Complex { re: 1.0, im: 0.0 },
+                    h_00,
+                    t + (Self::C1[0] * dt),
+                )
+            })
+            .collect::<Vec<_>>();
 
-        let mut h_01 = get_supporting_state_lazy(state, &[(h_00_coherent, Self::A0[1][0] * dt)]);
+        let h_hat_k0_incoherent = &(0..system.n_incoherent())
+            .map(|idx| {
+                system.get_incoherent_step(
+                    idx,
+                    Complex { re: 1.0, im: 0.0 },
+                    h_00,
+                    t + (Self::C2[0] * dt),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let mut h_01 = get_supporting_state_lazy(state, &[(h_00_coherent, Self::A0[1][0])]);
         if Self::B0[1][0] != 0.0 {
             h_k0_incoherent
                 .iter()
@@ -515,12 +533,12 @@ impl Solver for Order2ExplicitWeakR5Solver {
 
         let h_k1 = h_k0_incoherent
             .iter()
-            .map(|b_0| {
+            .map(|b_k| {
                 get_supporting_state_lazy(
                     state,
                     &[
-                        (h_00_coherent, Self::A1[1][0] * dt),
-                        (b_0, Self::B1[1][0] * sqrt_dt),
+                        (h_00_coherent, Self::A1[1][0]),
+                        (b_k, Self::B1[1][0] * sqrt_dt),
                     ],
                 )
             })
@@ -528,10 +546,9 @@ impl Solver for Order2ExplicitWeakR5Solver {
 
         let h_hat_k1 = (0..system.n_incoherent())
             .map(|k| {
-                let mut out =
-                    get_supporting_state_lazy(state, &[(h_00_coherent, Self::A2[1][0] * dt)]);
+                let mut out = get_supporting_state_lazy(state, &[(h_00_coherent, Self::A2[1][0])]);
                 if Self::B2[1][0] != 0.0 {
-                    h_k0_incoherent.iter().enumerate().for_each(|(l, b)| {
+                    h_k0_incoherent.iter().enumerate().for_each(|(l, b_l)| {
                         if l == k {
                             return;
                         }
@@ -541,25 +558,34 @@ impl Solver for Order2ExplicitWeakR5Solver {
                             i_hat[k] * i_hat[l].conj() + sqrt_dt * i_bar[l]
                         };
 
-                        out += &(((0.5 * Self::B2[1][0] * factor) / sqrt_dt) * b);
+                        out += &((0.5 * Self::B2[1][0] * factor / sqrt_dt) * b_l);
                     });
                 }
                 out
             })
             .collect::<Vec<_>>();
 
-        let h_01_coherent = &system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, &h_01, t);
+        let h_01_coherent =
+            &system.get_coherent_step(Complex { re: dt, im: 0.0 }, &h_01, t + (Self::C0[1] * dt));
+
         let h_k1_incoherent = &h_k1
             .iter()
             .enumerate()
-            .map(|(idx, s)| system.get_incoherent_step(idx, Complex { re: 1.0, im: 0.0 }, s, t))
+            .map(|(idx, s)| {
+                system.get_incoherent_step(
+                    idx,
+                    Complex { re: 1.0, im: 0.0 },
+                    s,
+                    t + (Self::C1[1] * dt),
+                )
+            })
             .collect::<Vec<_>>();
 
         let mut h_02 = get_supporting_state_lazy(
             state,
             &[
-                (h_00_coherent, Self::A0[2][0] * dt),
-                (h_01_coherent, Self::A0[2][1] * dt),
+                (h_00_coherent, Self::A0[2][0]),
+                (h_01_coherent, Self::A0[2][1]),
                 // TODO: find a way to suppoort this better...
                 // (b_0, Self::B0[2][0] * dt),
                 // (b_1, Self::B0[2][1] * dt),
@@ -581,14 +607,15 @@ impl Solver for Order2ExplicitWeakR5Solver {
         let h_k2 = h_k0_incoherent
             .iter()
             .zip(h_k1_incoherent)
-            .map(|(b_0, b_1)| {
+            .map(|(bk_0, bk_1)| {
+                // TODO: is it better to pre-compute the coherent?
                 get_supporting_state_lazy(
                     state,
                     &[
-                        (h_00_coherent, Self::A1[2][0] * dt),
-                        (h_01_coherent, Self::A1[2][1] * dt),
-                        (b_0, Self::B1[2][0] * dt),
-                        (b_1, Self::B1[2][1] * dt),
+                        (h_00_coherent, Self::A1[2][0]),
+                        (h_01_coherent, Self::A1[2][1]),
+                        (bk_0, Self::B1[2][0] * sqrt_dt),
+                        (bk_1, Self::B1[2][1] * sqrt_dt),
                     ],
                 )
             })
@@ -599,8 +626,8 @@ impl Solver for Order2ExplicitWeakR5Solver {
                 let mut out = get_supporting_state_lazy(
                     state,
                     &[
-                        (h_00_coherent, Self::A2[2][0] * dt),
-                        (h_01_coherent, Self::A2[2][1] * dt),
+                        (h_00_coherent, Self::A2[2][0]),
+                        (h_01_coherent, Self::A2[2][1]),
                     ],
                 );
                 if Self::B2[2][0] != 0.0 {
@@ -635,20 +662,21 @@ impl Solver for Order2ExplicitWeakR5Solver {
                 out
             })
             .collect::<Vec<_>>();
+        let h_02_coherent =
+            &system.get_coherent_step(Complex { re: dt, im: 0.0 }, &h_02, t + (Self::C0[2] * dt));
 
-        let h_02_coherent = &system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, &h_02, t);
         // Y_(n+1) = Y_(n) + \sum_i alpha_i a(t_n+c_i^0h_n, H_i^0)h_n
         let mut out = state
             + &(Complex {
-                re: Self::ALPHA[0] * dt,
+                re: Self::ALPHA[0],
                 im: 0.0,
             } * h_00_coherent)
             + &(Complex {
-                re: Self::ALPHA[1] * dt,
+                re: Self::ALPHA[1],
                 im: 0.0,
             } * h_01_coherent)
             + &(Complex {
-                re: Self::ALPHA[2] * dt,
+                re: Self::ALPHA[2],
                 im: 0.0,
             } * h_02_coherent);
 
@@ -674,7 +702,14 @@ impl Solver for Order2ExplicitWeakR5Solver {
         let h_k2_incoherent = h_k2
             .iter()
             .enumerate()
-            .map(|(idx, s)| system.get_incoherent_step(idx, Complex { re: 1.0, im: 0.0 }, s, t))
+            .map(|(idx, s)| {
+                system.get_incoherent_step(
+                    idx,
+                    Complex { re: 1.0, im: 0.0 },
+                    s,
+                    t + (Self::C2[2] * dt),
+                )
+            })
             .collect::<Vec<_>>();
 
         h_k2_incoherent
@@ -694,10 +729,10 @@ impl Solver for Order2ExplicitWeakR5Solver {
                 let factor = (Self::BETA3[0] * i_hat_k) + (Self::BETA4[0] * sqrt_dt);
                 out += &(factor * b_k);
             });
-        let h_hat_k1_incoherent = h_hat_k1
-            .iter()
-            .enumerate()
-            .map(|(idx, s)| system.get_incoherent_step(idx, Complex { re: 1.0, im: 0.0 }, s, t));
+
+        let h_hat_k1_incoherent = h_hat_k1.iter().enumerate().map(|(idx, s)| {
+            system.get_incoherent_step(idx, Complex { re: 1.0, im: 0.0 }, s, t + (Self::C2[1] * dt))
+        });
 
         h_hat_k1_incoherent
             .zip(i_hat.iter())
@@ -706,10 +741,9 @@ impl Solver for Order2ExplicitWeakR5Solver {
                 out += &(factor * b_k);
             });
 
-        let h_hat_k2_incoherent = h_hat_k2
-            .iter()
-            .enumerate()
-            .map(|(idx, s)| system.get_incoherent_step(idx, Complex { re: 1.0, im: 0.0 }, s, t));
+        let h_hat_k2_incoherent = h_hat_k2.iter().enumerate().map(|(idx, s)| {
+            system.get_incoherent_step(idx, Complex { re: 1.0, im: 0.0 }, s, t + (Self::C2[2] * dt))
+        });
 
         h_hat_k2_incoherent
             .zip(i_hat.iter())
