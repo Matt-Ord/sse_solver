@@ -89,7 +89,9 @@
         "1YiB.rust-bundle",
         "rust-lang.rust-analyzer",
         "vadimcn.vscode-lldb",
-        "dseight.disasexpl"
+        "dseight.disasexpl",
+        "GitHub.copilot",
+        "fill-labs.dependi"
       ]
     }
   }
