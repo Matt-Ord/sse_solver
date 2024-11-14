@@ -1,6 +1,6 @@
 [workspace]
 
-members = ["sse_benchmark", "sse_solver"]
+members = ["sse_benchmark", "sse_solver", "sse_solver_py"]
 exclude = ["sse_solver_py"]
 resolver = "2"
 

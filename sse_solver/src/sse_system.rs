@@ -5,7 +5,7 @@ use num_complex::Complex;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    sparse::{BandedArray, FactorizedArray, TransposedBandedArray},
+    sparse::{BandedArray, FactorizedArray, SplitScatteringArray, TransposedBandedArray},
     system::{SDEOperators, SDEStep, SDESystem},
 };
 
@@ -160,6 +160,21 @@ impl FullNoise<BandedArray<Complex<f64>>, TransposedBandedArray<Complex<f64>>> {
                 .map(|o| FullNoiseSource {
                     operator: o.clone(),
                     conjugate_operator: o.transpose().conj(),
+                })
+                .collect(),
+        )
+    }
+}
+
+impl FullNoise<SplitScatteringArray<Complex<f64>>, SplitScatteringArray<Complex<f64>>> {
+    #[must_use]
+    pub fn from_split(operators: &[SplitScatteringArray<Complex<f64>>]) -> Self {
+        Self(
+            operators
+                .iter()
+                .map(|o| FullNoiseSource {
+                    operator: o.clone(),
+                    conjugate_operator: o.conj_transpose(),
                 })
                 .collect(),
         )
@@ -401,10 +416,10 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
 
 #[cfg(test)]
 mod test {
-    use ndarray::{s, Array1, Array2, Array3};
+    use ndarray::{Array1, Array2, Array3};
     use num_complex::Complex;
 
-    use crate::solvers::{EulerSolver, Solver};
+    use crate::solvers::{EulerSolver, Solver, StateMeasurement};
     use crate::tests::{get_initial_state, get_random_system};
 
     use super::{FullNoise, SSESystem};
@@ -452,14 +467,25 @@ mod test {
 
         let n_out = 30;
         let dt = 1f64;
-        let diagonal_result = EulerSolver {}.solve(&initial_state, &diagonal_system, n_out, 10, dt);
-        let result_full = EulerSolver {}.solve(&initial_state, &full_system, n_out, 10, dt);
+        let diagonal_result = EulerSolver {}.solve(
+            &initial_state,
+            &diagonal_system,
+            &StateMeasurement {},
+            n_out,
+            10,
+            dt,
+        );
+        let result_full = EulerSolver {}.solve(
+            &initial_state,
+            &full_system,
+            &StateMeasurement {},
+            n_out,
+            10,
+            dt,
+        );
 
         for i in 0..n_out {
-            assert_eq!(
-                result_full.slice(s![i, ..]),
-                diagonal_result.slice(s![i, ..])
-            );
+            assert_eq!(result_full[i], diagonal_result[i]);
         }
     }
 }

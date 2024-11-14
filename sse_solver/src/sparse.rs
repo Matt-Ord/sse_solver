@@ -279,31 +279,50 @@ impl<T> FactorizedArray<T> {
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 /// Represents a scattering operator of the form
-/// ```A(x) + C(p)B(x)```
+/// ```A(x) + B(x)C(p)D(x)```
 /// This allows us to use the split operator method to improve performance
 pub struct SplitScatteringArray<T> {
-    a: Array1<T>,
-    b: Array1<T>,
+    a: Option<Array1<T>>,
+    b: Option<Array1<T>>,
     c: Array1<T>,
+    d: Option<Array1<T>>,
     n_states: usize,
+}
+
+impl<T: Clone + num_complex::ComplexFloat> SplitScatteringArray<T> {
+    #[must_use]
+    pub fn conj_transpose(&self) -> SplitScatteringArray<T> {
+        SplitScatteringArray {
+            a: self.a.as_ref().map(|d| d.map(|i| i.conj())),
+            b: self.d.as_ref().map(|d| d.map(|i| i.conj())),
+            c: self.c.map(|i| i.conj()),
+            d: self.b.as_ref().map(|d| d.map(|i| i.conj())),
+            n_states: self.n_states,
+        }
+    }
 }
 
 impl<T> SplitScatteringArray<T> {
     #[must_use]
     pub fn try_from_parts(
-        a: Array1<T>,
-        b: Array1<T>,
+        a: Option<Array1<T>>,
+        b: Option<Array1<T>>,
         c: Array1<T>,
+        d: Option<Array1<T>>,
     ) -> Option<SplitScatteringArray<T>> {
-        if a.len() != b.len() || a.len() != c.len() {
+        if [a.as_ref(), b.as_ref(), d.as_ref()]
+            .iter()
+            .any(|x| x.is_some_and(|i| i.len() != c.len()))
+        {
             return None;
         }
 
         Some(SplitScatteringArray {
-            n_states: a.len(),
+            n_states: c.len(),
             a,
             b,
             c,
+            d,
         })
     }
     #[must_use]
@@ -312,8 +331,13 @@ impl<T> SplitScatteringArray<T> {
     /// # Panics
     ///
     /// Will panic if the length of parts are not equal
-    pub fn from_parts(a: Array1<T>, b: Array1<T>, c: Array1<T>) -> SplitScatteringArray<T> {
-        SplitScatteringArray::try_from_parts(a, b, c).expect("Parts must have the same length")
+    pub fn from_parts(
+        a: Option<Array1<T>>,
+        b: Option<Array1<T>>,
+        c: Array1<T>,
+        d: Option<Array1<T>>,
+    ) -> SplitScatteringArray<T> {
+        SplitScatteringArray::try_from_parts(a, b, c, d).expect("Parts must have the same length")
     }
 }
 
@@ -339,7 +363,11 @@ impl Dot<Array1<Complex<f64>>> for PlannedSplitScatteringArray<f64> {
     fn dot(&self, rhs: &Array1<Complex<f64>>) -> Self::Output {
         assert!(self.inner.n_states == rhs.len());
 
-        let mut b_vec = &self.inner.b * rhs;
+        let mut b_vec = if let Some(inner) = &self.inner.b {
+            inner * rhs
+        } else {
+            rhs.to_owned()
+        };
 
         self.forward_plan.process(b_vec.as_slice_mut().unwrap());
 
@@ -347,7 +375,11 @@ impl Dot<Array1<Complex<f64>>> for PlannedSplitScatteringArray<f64> {
 
         self.inverse_plan.process(cb_vec.as_slice_mut().unwrap());
 
-        cb_vec + (&self.inner.a * rhs)
+        if let Some(inner) = &self.inner.a {
+            cb_vec + inner * rhs
+        } else {
+            cb_vec
+        }
     }
 }
 

@@ -10,13 +10,13 @@ pub mod system;
 mod tests {
     type DiagonalNoise = FullNoise<FactorizedArray<Complex<f64>>, FactorizedArray<Complex<f64>>>;
 
-    use ndarray::{linalg::Dot, s, Array1, Array2};
+    use ndarray::{linalg::Dot, Array1, Array2};
     use num_complex::{Complex, ComplexFloat};
     use rand::Rng;
 
     use crate::{
         distribution::StandardComplexNormal,
-        solvers::{EulerSolver, Solver},
+        solvers::{EulerSolver, Solver, StateMeasurement},
         sparse::{BandedArray, FactorizedArray},
         sse_system::{FullNoise, SSESystem},
     };
@@ -98,8 +98,8 @@ mod tests {
         let system = get_random_system(10, n_states);
         let initial_state = get_initial_state(n_states);
 
-        let result = EulerSolver {}.solve(&initial_state, &system, 1, 1, 0.0);
-        assert_eq!(result.slice(s![0, ..]), initial_state);
+        let result = EulerSolver {}.solve(&initial_state, &system, &StateMeasurement {}, 1, 1, 0.0);
+        assert_eq!(result[0], initial_state);
     }
     #[test]
     fn test_zero_timestep() {
@@ -108,10 +108,17 @@ mod tests {
         let initial_state = get_initial_state(n_states);
 
         let n_out = 3;
-        let result = EulerSolver {}.solve(&initial_state, &system, n_out, 10, 0.0);
+        let result = EulerSolver {}.solve(
+            &initial_state,
+            &system,
+            &StateMeasurement {},
+            n_out,
+            10,
+            0.0,
+        );
 
-        for i in 0..n_out {
-            assert_eq!(result.slice(s![i, ..]), initial_state);
+        for res in result {
+            assert_eq!(res, initial_state);
         }
     }
 

@@ -8,7 +8,7 @@ use num_complex::Complex;
 use rand::Rng;
 use sse_solver::{
     distribution::StandardComplexNormal,
-    solvers::{EulerSolver, Order2ExplicitWeakSolver, Solver},
+    solvers::{EulerSolver, Order2ExplicitWeakSolver, Solver, StateMeasurement},
     sparse::{BandedArray, PlannedSplitScatteringArray, SplitScatteringArray},
     sse_system::{FullNoise, SSESystem},
 };
@@ -40,7 +40,14 @@ fn euler_solver_benchmark() {
     let n = 1000;
     let step = 1000;
     let dt = 0.0001;
-    test::black_box(EulerSolver {}.solve(&initial_state, &system, n, step, dt));
+    test::black_box(EulerSolver {}.solve(
+        &initial_state,
+        &system,
+        &StateMeasurement {},
+        n,
+        step,
+        dt,
+    ));
 }
 #[allow(dead_code)]
 fn euler_solver_benchmark_full() {
@@ -64,7 +71,14 @@ fn euler_solver_benchmark_full() {
     let n = 100;
     let step = 4000;
     let dt = 0.0001;
-    test::black_box(EulerSolver {}.solve(&initial_state, &system, n, step, dt));
+    test::black_box(EulerSolver {}.solve(
+        &initial_state,
+        &system,
+        &StateMeasurement {},
+        n,
+        step,
+        dt,
+    ));
 }
 
 #[allow(dead_code)]
@@ -104,7 +118,14 @@ fn euler_solver_benchmark_sparse() {
     let n = 800;
     let step = 8000;
     let dt = 1.25e-17;
-    test::black_box(EulerSolver {}.solve(&initial_state, &system, n, step, dt));
+    test::black_box(EulerSolver {}.solve(
+        &initial_state,
+        &system,
+        &StateMeasurement {},
+        n,
+        step,
+        dt,
+    ));
 }
 #[allow(dead_code)]
 fn second_order_solver_benchmark_sparse() {
@@ -143,7 +164,14 @@ fn second_order_solver_benchmark_sparse() {
     let n = 80;
     let step = 8000;
     let dt = 1.25e-17;
-    test::black_box(Order2ExplicitWeakSolver {}.solve(&initial_state, &system, n, step, dt));
+    test::black_box(Order2ExplicitWeakSolver {}.solve(
+        &initial_state,
+        &system,
+        &StateMeasurement {},
+        n,
+        step,
+        dt,
+    ));
 }
 fn euler_solver_full_matrix_optimal_benchmark_step(
     state: &Array1<Complex<f64>>,
@@ -499,9 +527,10 @@ fn split_array_dot_benchmark() {
     let shape = [4096, 4096];
 
     let a: PlannedSplitScatteringArray<_> = SplitScatteringArray::<Complex<f64>>::from_parts(
+        Some(Array1::zeros(shape[0])),
+        Some(Array1::zeros(shape[0])),
         Array1::zeros(shape[0]),
-        Array1::zeros(shape[0]),
-        Array1::zeros(shape[0]),
+        None,
     )
     .into();
     let b = Array1::<Complex<f64>>::ones([shape[1]]);
@@ -516,9 +545,10 @@ fn split_array_dot_without_scratch_benchmark() {
     let shape = [4096, 4096];
 
     let a: PlannedSplitScatteringArray<_> = SplitScatteringArray::<Complex<f64>>::from_parts(
+        Some(Array1::zeros(shape[0])),
+        Some(Array1::zeros(shape[0])),
         Array1::zeros(shape[0]),
-        Array1::zeros(shape[0]),
-        Array1::zeros(shape[0]),
+        None,
     )
     .into();
     let b = Array1::<Complex<f64>>::ones([shape[1]]);
@@ -533,9 +563,10 @@ fn split_array_dot_with_scratch_benchmark() {
     let shape = [4096, 4096];
 
     let a: PlannedSplitScatteringArray<_> = SplitScatteringArray::<Complex<f64>>::from_parts(
+        Some(Array1::zeros(shape[0])),
+        Some(Array1::zeros(shape[0])),
         Array1::zeros(shape[0]),
-        Array1::zeros(shape[0]),
-        Array1::zeros(shape[0]),
+        None,
     )
     .into();
     let b = Array1::<Complex<f64>>::ones([shape[1]]);
