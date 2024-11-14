@@ -3,11 +3,13 @@ use std::thread;
 use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex;
 use pyo3::{exceptions::PyAssertionError, prelude::*};
+use sse_solver::solvers::{Measurement, OperatorMeasurement, StateMeasurement};
+use sse_solver::sparse::PlannedSplitScatteringArray;
 use sse_solver::{
     solvers::{
         EulerSolver, MilstenSolver, NormalizedEulerSolver, Order2ExplicitWeakSolverRedux, Solver,
     },
-    sparse::BandedArray,
+    sparse::{BandedArray, SplitScatteringArray},
     sse_system::{FullNoise, SSESystem},
     system::SDESystem,
 };
@@ -79,27 +81,41 @@ impl SimulationConfig {
 }
 
 impl SimulationConfig {
-    fn simulate_single_system<T: SDESystem>(
+    fn simulate_single_system<T: SDESystem, M: Measurement>(
         &self,
         initial_state: &Array1<Complex<f64>>,
         system: &T,
-    ) -> Array2<Complex<f64>> {
+        measurement: &M,
+    ) -> Vec<M::Out> {
         match (self.n_realizations, self.method) {
-            (1, SSEMethod::Euler) => {
-                EulerSolver::default().solve(initial_state, system, self.n, self.step, self.dt)
-            }
+            (1, SSEMethod::Euler) => EulerSolver::default().solve(
+                initial_state,
+                system,
+                measurement,
+                self.n,
+                self.step,
+                self.dt,
+            ),
             (n_realizations, SSEMethod::Euler) => {
                 #[cfg(feature = "localized")]
                 return LocalizedSolver {
                     solver: EulerSolver::default(),
                     n_realizations,
                 }
-                .solve(initial_state, system, self.n, self.step, self.dt);
+                .solve(
+                    initial_state,
+                    system,
+                    measurement,
+                    self.n,
+                    self.step,
+                    self.dt,
+                );
                 panic!()
             }
             (1, SSEMethod::NormalizedEuler) => NormalizedEulerSolver::default().solve(
                 initial_state,
                 system,
+                measurement,
                 self.n,
                 self.step,
                 self.dt,
@@ -110,24 +126,44 @@ impl SimulationConfig {
                     solver: EulerSolver::default(),
                     n_realizations,
                 }
-                .solve(initial_state, system, self.n, self.step, self.dt);
+                .solve(
+                    initial_state,
+                    system,
+                    measurement,
+                    self.n,
+                    self.step,
+                    self.dt,
+                );
                 panic!()
             }
-            (1, SSEMethod::Milsten) => {
-                MilstenSolver {}.solve(initial_state, system, self.n, self.step, self.dt)
-            }
+            (1, SSEMethod::Milsten) => MilstenSolver {}.solve(
+                initial_state,
+                system,
+                measurement,
+                self.n,
+                self.step,
+                self.dt,
+            ),
             (n_realizations, SSEMethod::Milsten) => {
                 #[cfg(feature = "localized")]
                 return LocalizedSolver {
                     solver: MilstenSolver {},
                     n_realizations,
                 }
-                .solve(initial_state, system, self.n, self.step, self.dt);
+                .solve(
+                    initial_state,
+                    system,
+                    measurement,
+                    self.n,
+                    self.step,
+                    self.dt,
+                );
                 panic!()
             }
             (1, SSEMethod::Order2ExplicitWeak) => Order2ExplicitWeakSolverRedux {}.solve(
                 initial_state,
                 system,
+                measurement,
                 self.n,
                 self.step,
                 self.dt,
@@ -138,20 +174,30 @@ impl SimulationConfig {
                     solver: Order2ExplicitWeakSolverRedux {},
                     n_realizations,
                 }
-                .solve(initial_state, system, self.n, self.step, self.dt);
+                .solve(
+                    initial_state,
+                    system,
+                    measurement,
+                    self.n,
+                    self.step,
+                    self.dt,
+                );
                 panic!()
             }
         }
     }
 
-    fn simulate_system<T: SDESystem + std::marker::Sync>(
+    fn simulate_system<T: SDESystem + Sync, M: Measurement<Out: Send> + Sync>(
         &self,
         initial_state: &Array1<Complex<f64>>,
         system: &T,
-    ) -> Vec<Complex<f64>> {
+        measurement: &M,
+    ) -> Vec<M::Out> {
         thread::scope(move |s| {
             let threads = (0..self.n_trajectories)
-                .map(|_| s.spawn(move || self.simulate_single_system(initial_state, system)))
+                .map(|_| {
+                    s.spawn(move || self.simulate_single_system(initial_state, system, measurement))
+                })
                 .collect::<Vec<_>>();
 
             threads
@@ -161,24 +207,31 @@ impl SimulationConfig {
         })
     }
 }
+
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn solve_sse(
     initial_state: Vec<Complex<f64>>,
     hamiltonian: Vec<Vec<Complex<f64>>>,
-    operators: Vec<Vec<Vec<Complex<f64>>>>,
+    noise_operators: Vec<Vec<Vec<Complex<f64>>>>,
     config: PyRef<SimulationConfig>,
 ) -> PyResult<Vec<Complex<f64>>> {
     if initial_state.len() != hamiltonian.len() || hamiltonian[1].len() != hamiltonian.len() {
         return Err(PyAssertionError::new_err("Hamiltonian has bad shape"));
     }
-    if initial_state.len() != operators[1].len() || operators[1].len() != operators[2].len() {
+    if initial_state.len() != noise_operators[1].len()
+        || noise_operators[1].len() != noise_operators[2].len()
+    {
         return Err(PyAssertionError::new_err("Hamiltonian has bad shape"));
     }
     let noise = FullNoise::from_operators(
         &Array3::from_shape_vec(
-            (operators.len(), initial_state.len(), initial_state.len()),
-            operators.into_iter().flatten().flatten().collect(),
+            (
+                noise_operators.len(),
+                initial_state.len(),
+                initial_state.len(),
+            ),
+            noise_operators.into_iter().flatten().flatten().collect(),
         )
         .unwrap(),
     );
@@ -192,56 +245,191 @@ fn solve_sse(
     };
 
     let initial_state = Array1::from(initial_state);
-    Ok(config.simulate_system(&initial_state, &system))
+    Ok(config
+        .simulate_system(&initial_state, &system, &StateMeasurement {})
+        .iter()
+        .flat_map(|d| d.iter())
+        .cloned()
+        .collect())
+}
+
+#[pyclass]
+#[derive(Clone)]
+struct BandedData {
+    #[pyo3(get)]
+    diagonals: Vec<Vec<Complex<f64>>>,
+    #[pyo3(get)]
+    offsets: Vec<usize>,
+    #[pyo3(get)]
+    shape: [usize; 2],
+}
+
+#[pymethods]
+impl BandedData {
+    #[new]
+    fn new(diagonals: Vec<Vec<Complex<f64>>>, offsets: Vec<usize>, shape: [usize; 2]) -> Self {
+        assert!(diagonals.len() == offsets.len());
+        BandedData {
+            diagonals,
+            offsets,
+            shape,
+        }
+    }
+}
+
+impl From<BandedData> for BandedArray<Complex<f64>> {
+    fn from(value: BandedData) -> Self {
+        BandedArray::from_sparse(&value.diagonals, &value.offsets, &value.shape)
+    }
 }
 
 #[pyfunction]
-#[allow(clippy::too_many_arguments)]
 fn solve_sse_banded(
     initial_state: Vec<Complex<f64>>,
-    hamiltonian_diagonal: Vec<Vec<Complex<f64>>>,
-    hamiltonian_offset: Vec<usize>,
-    operators_diagonals: Vec<Vec<Vec<Complex<f64>>>>,
-    operators_offsets: Vec<Vec<usize>>,
+    hamiltonian: &BandedData,
+    noise_operators: Vec<BandedData>,
     config: PyRef<SimulationConfig>,
 ) -> PyResult<Vec<Complex<f64>>> {
-    if operators_diagonals.len() != operators_offsets.len() {
-        return Err(PyAssertionError::new_err("Bad Operators"));
-    }
-    if operators_diagonals[0].len() != operators_offsets[0].len() {
-        return Err(PyAssertionError::new_err(
-            "Number of offsets does not match number of diagonals",
-        ));
-    }
-    if hamiltonian_diagonal.len() != hamiltonian_offset.len() {
-        return Err(PyAssertionError::new_err(
-            "Number of offsets does not match number of diagonals",
-        ));
-    }
-    if operators_diagonals[0][0].len() != hamiltonian_diagonal[0].len()
-        || hamiltonian_diagonal[0].len() != initial_state.len()
-    {
-        return Err(PyAssertionError::new_err(
-            "Bad Hamiltonian or operator size",
-        ));
-    }
-
     let shape = [initial_state.len(), initial_state.len()];
+    assert!(hamiltonian.shape == shape);
+    noise_operators
+        .iter()
+        .for_each(|op| assert!(op.shape == shape));
+
     let noise = FullNoise::from_banded(
-        &operators_diagonals
-            .iter()
-            .zip(operators_offsets.iter())
-            .map(|(diagonals, offsets)| BandedArray::from_sparse(diagonals, offsets, &shape))
+        &noise_operators
+            .into_iter()
+            .map(BandedArray::from)
             .collect::<Vec<_>>(),
     );
     let system = SSESystem {
         noise,
-        hamiltonian: BandedArray::from_sparse(&hamiltonian_diagonal, &hamiltonian_offset, &shape),
+        hamiltonian: BandedArray::from(hamiltonian.clone()),
     };
 
     let initial_state = Array1::from(initial_state);
 
-    Ok(config.simulate_system(&initial_state, &system))
+    Ok(config
+        .simulate_system(&initial_state, &system, &StateMeasurement {})
+        .iter()
+        .flat_map(|d| d.iter())
+        .cloned()
+        .collect())
+}
+#[pyclass]
+#[derive(Clone)]
+struct SplitOperatorData {
+    #[pyo3(get)]
+    a: Option<Vec<Complex<f64>>>,
+    #[pyo3(get)]
+    b: Option<Vec<Complex<f64>>>,
+    #[pyo3(get)]
+    c: Vec<Complex<f64>>,
+    #[pyo3(get)]
+    d: Option<Vec<Complex<f64>>>,
+}
+
+#[pymethods]
+impl SplitOperatorData {
+    #[new]
+    #[pyo3(signature = (*, a, b, c, d))]
+    fn new(
+        a: Option<Vec<Complex<f64>>>,
+        b: Option<Vec<Complex<f64>>>,
+        c: Vec<Complex<f64>>,
+        d: Option<Vec<Complex<f64>>>,
+    ) -> Self {
+        SplitOperatorData { a, b, c, d }
+    }
+}
+
+impl From<SplitOperatorData> for SplitScatteringArray<Complex<f64>> {
+    fn from(value: SplitOperatorData) -> Self {
+        SplitScatteringArray::from_parts(
+            value.a.map(|d| d.into()),
+            value.b.map(|d| d.into()),
+            value.c.into(),
+            value.d.map(|d| d.into()),
+        )
+    }
+}
+
+fn solve_sse_split_operator_for_measurement<
+    M: Sync + Measurement<Out: Send + IntoIterator<Item = Complex<f64>>>,
+>(
+    initial_state: Vec<Complex<f64>>,
+    hamiltonian: &SplitOperatorData,
+    noise_operators: Vec<SplitOperatorData>,
+    config: PyRef<SimulationConfig>,
+    measurement: &M,
+) -> PyResult<Vec<Complex<f64>>> {
+    assert!(hamiltonian.c.len() == initial_state.len());
+    noise_operators
+        .iter()
+        .for_each(|op| assert!(op.c.len() == initial_state.len()));
+
+    let noise = FullNoise::from_split(
+        &noise_operators
+            .into_iter()
+            .map(SplitScatteringArray::from)
+            .collect::<Vec<_>>(),
+    );
+    let system = SSESystem {
+        noise,
+        hamiltonian: SplitScatteringArray::from(hamiltonian.clone()),
+    };
+
+    let initial_state = Array1::from(initial_state);
+
+    Ok(config
+        .simulate_system(&initial_state, &system, measurement)
+        .into_iter()
+        .flat_map(|d| d.into_iter())
+        .collect())
+}
+
+#[pyfunction]
+fn solve_sse_split_operator(
+    initial_state: Vec<Complex<f64>>,
+    hamiltonian: &SplitOperatorData,
+    noise_operators: Vec<SplitOperatorData>,
+    config: PyRef<SimulationConfig>,
+) -> PyResult<Vec<Complex<f64>>> {
+    solve_sse_split_operator_for_measurement(
+        initial_state,
+        hamiltonian,
+        noise_operators,
+        config,
+        &StateMeasurement {},
+    )
+}
+
+#[pyfunction]
+fn solve_sse_measured_split_operator(
+    initial_state: Vec<Complex<f64>>,
+    hamiltonian: &SplitOperatorData,
+    noise_operators: Vec<SplitOperatorData>,
+    measurement_operators: Vec<SplitOperatorData>,
+    config: PyRef<SimulationConfig>,
+) -> PyResult<Vec<Complex<f64>>> {
+    measurement_operators
+        .iter()
+        .for_each(|op| assert!(op.c.len() == initial_state.len()));
+
+    let measurement = measurement_operators
+        .into_iter()
+        .map(SplitScatteringArray::from)
+        .map(PlannedSplitScatteringArray::from)
+        .map(|operator| OperatorMeasurement { operator })
+        .collect::<Vec<_>>();
+
+    solve_sse_split_operator_for_measurement(
+        initial_state,
+        hamiltonian,
+        noise_operators,
+        config,
+        &measurement,
+    )
 }
 
 #[pyfunction]
@@ -272,7 +460,12 @@ fn solve_sse_bra_ket(
     };
 
     let initial_state = Array1::from(initial_state);
-    Ok(config.simulate_system(&initial_state, &system))
+    Ok(config
+        .simulate_system(&initial_state, &system, &StateMeasurement {})
+        .iter()
+        .flat_map(|d| d.iter())
+        .cloned()
+        .collect())
 }
 
 /// A Python module implemented in Rust.
@@ -281,6 +474,10 @@ fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_sse, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_bra_ket, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_banded, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_sse_split_operator, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_sse_measured_split_operator, m)?)?;
     m.add_class::<SimulationConfig>()?;
+    m.add_class::<BandedData>()?;
+    m.add_class::<SplitOperatorData>()?;
     Ok(())
 }

@@ -5,23 +5,26 @@ from ._sse_method import SSEMethod
 def solve_sse(
     initial_state: list[complex],
     hamiltonian: list[list[complex]],
-    operators: list[list[list[complex]]],
+    noise_operators: list[list[list[complex]]],
     config: SimulationConfig,
 ) -> list[complex]: ...
-def solve_sse_bra_ket(  # noqa: PLR0913
+def solve_sse_banded(
     initial_state: list[complex],
-    hamiltonian: list[complex],
-    amplitudes: list[complex],
-    bra: list[complex],
-    ket: list[complex],
+    hamiltonian: BandedData,
+    noise_operators: list[BandedData],
     config: SimulationConfig,
 ) -> list[complex]: ...
-def solve_sse_banded(  # noqa: PLR0913
+def solve_sse_split_operator(
     initial_state: list[complex],
-    hamiltonian_diagonal: list[list[complex]],
-    hamiltonian_offset: list[int],
-    operators_diagonals: list[list[list[complex]]],
-    operators_offsets: list[list[int]],
+    hamiltonian: SplitOperatorData,
+    noise_operators: list[SplitOperatorData],
+    config: SimulationConfig,
+) -> list[complex]: ...
+def solve_sse_measured_split_operator(
+    initial_state: list[complex],
+    hamiltonian: SplitOperatorData,
+    noise_operators: list[SplitOperatorData],
+    measurement_operators: list[SplitOperatorData],
     config: SimulationConfig,
 ) -> list[complex]: ...
 
@@ -44,3 +47,36 @@ class SimulationConfig:
     n_realizations: int
     @property
     def method(self: Self) -> SSEMethod: ...
+
+class BandedData:
+    def __init__(
+        self,
+        *,
+        diagonals: list[list[complex]],
+        offsets: list[int],
+        shape: tuple[int, int],
+    ) -> None: ...
+    @property
+    def diagonals(self: Self) -> SSEMethod: ...
+    @property
+    def offsets(self: Self) -> list[int]: ...
+    @property
+    def shape(self: Self) -> tuple[int, int]: ...
+
+class SplitOperatorData:
+    def __init__(
+        self,
+        *,
+        a: list[complex] | None = None,
+        b: list[complex] | None = None,
+        c: list[complex],
+        d: list[complex] | None = None,
+    ) -> None: ...
+    @property
+    def a(self: Self) -> list[complex] | None: ...
+    @property
+    def b(self: Self) -> list[complex] | None: ...
+    @property
+    def c(self: Self) -> list[complex]: ...
+    @property
+    def d(self: Self) -> list[complex] | None: ...
