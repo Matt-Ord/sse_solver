@@ -47,9 +47,9 @@ impl Solver for EulerSolver {
 }
 
 #[derive(Default)]
-pub struct NormalizedEulerSolver(EulerSolver);
+pub struct NormalizedSolver<S>(pub S);
 
-impl Solver for NormalizedEulerSolver {
+impl<S: Solver> Solver for NormalizedSolver<S> {
     fn step<T: SDESystem>(
         &self,
         state: &Array1<Complex<f64>>,

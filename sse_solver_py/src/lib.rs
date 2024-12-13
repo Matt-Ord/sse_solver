@@ -7,7 +7,7 @@ use sse_solver::solvers::{Measurement, OperatorMeasurement, StateMeasurement};
 use sse_solver::sparse::PlannedSplitScatteringArray;
 use sse_solver::{
     solvers::{
-        EulerSolver, MilstenSolver, NormalizedEulerSolver, Order2ExplicitWeakSolverRedux, Solver,
+        EulerSolver, MilstenSolver, NormalizedSolver, Order2ExplicitWeakSolverRedux, Solver,
     },
     sparse::{BandedArray, SplitScatteringArray},
     sse_system::{FullNoise, SSESystem},
@@ -23,6 +23,7 @@ enum SSEMethod {
     NormalizedEuler,
     Milsten,
     Order2ExplicitWeak,
+    NormalizedOrder2ExplicitWeak,
 }
 
 #[pyclass]
@@ -57,6 +58,7 @@ impl SimulationConfig {
             "NormalizedEuler" => SSEMethod::NormalizedEuler,
             "Milsten" => SSEMethod::Milsten,
             "Order2ExplicitWeak" => SSEMethod::Order2ExplicitWeak,
+            "NormalizedOrder2ExplicitWeak" => SSEMethod::NormalizedOrder2ExplicitWeak,
             _ => panic!(),
         };
         SimulationConfig {
@@ -76,6 +78,7 @@ impl SimulationConfig {
             SSEMethod::NormalizedEuler => "NormalizedEuler".to_owned(),
             SSEMethod::Milsten => "Milsten".to_owned(),
             SSEMethod::Order2ExplicitWeak => "Order2ExplicitWeak".to_owned(),
+            SSEMethod::NormalizedOrder2ExplicitWeak => "NormalizedOrder2ExplicitWeak".to_owned(),
         }
     }
 }
@@ -112,7 +115,7 @@ impl SimulationConfig {
                 );
                 panic!()
             }
-            (1, SSEMethod::NormalizedEuler) => NormalizedEulerSolver::default().solve(
+            (1, SSEMethod::NormalizedEuler) => NormalizedSolver(EulerSolver::default()).solve(
                 initial_state,
                 system,
                 measurement,
@@ -172,6 +175,32 @@ impl SimulationConfig {
                 #[cfg(feature = "localized")]
                 return LocalizedSolver {
                     solver: Order2ExplicitWeakSolverRedux {},
+                    n_realizations,
+                }
+                .solve(
+                    initial_state,
+                    system,
+                    measurement,
+                    self.n,
+                    self.step,
+                    self.dt,
+                );
+                panic!()
+            }
+            (1, SSEMethod::NormalizedOrder2ExplicitWeak) => {
+                NormalizedSolver(Order2ExplicitWeakSolverRedux {}).solve(
+                    initial_state,
+                    system,
+                    measurement,
+                    self.n,
+                    self.step,
+                    self.dt,
+                )
+            }
+            (n_realizations, SSEMethod::NormalizedOrder2ExplicitWeak) => {
+                #[cfg(feature = "localized")]
+                return LocalizedSolver {
+                    solver: NormalizedSolver(Order2ExplicitWeakSolverRedux {}),
                     n_realizations,
                 }
                 .solve(

@@ -5,4 +5,5 @@ SSEMethod = Literal[
     "NormalizedEuler",
     "Milsten",
     "Order2ExplicitWeak",
+    "NormalizedOrder2ExplicitWeak",
 ]
