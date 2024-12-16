@@ -7,9 +7,8 @@ use rand_distr::Distribution;
 
 use crate::{
     distribution::{
-        FourPointComplexW as FourPointComplexWDistribution,
-        NinePointComplexW as NinePointComplexWDistribution, StandardComplexNormal,
-        V as VDistribution,
+        NinePointComplexW as NinePointComplexWDistribution, StandardComplexNormal, ThreePointW,
+        TwoPointW, V as VDistribution,
     },
     system::{SDEStep, SDESystem},
 };
@@ -347,7 +346,7 @@ impl Solver for Order2ExplicitWeakSolverRedux {
 
         // Sample the W distribution (this is called I in the paper)
         let dw = &rng
-            .sample_iter(NinePointComplexWDistribution::new(dt))
+            .sample_iter(ThreePointW::new(dt))
             .take(system.n_incoherent())
             .map(|s| Complex { re: s, im: 0.0 })
             .collect::<Vec<_>>();
@@ -590,14 +589,16 @@ impl Solver for Order2ExplicitWeakR5Solver {
     ) -> Array1<Complex<f64>> {
         let rng = rand::thread_rng();
 
-        let i_hat = NinePointComplexWDistribution::new(dt)
+        let i_hat = ThreePointW::new(dt)
             .sample_iter(rng.clone())
             .take(system.n_incoherent())
+            .map(|d| Complex { re: d, im: 0.0 })
             .collect::<Vec<_>>();
         //TODO: 4 point??
-        let i_bar = NinePointComplexWDistribution::new(dt)
+        let i_bar = TwoPointW::new(dt)
             .sample_iter(rng.clone())
             .take(system.n_incoherent())
+            .map(|d| Complex { re: d, im: 0.0 })
             .collect::<Vec<_>>();
 
         let increment = Increment {
