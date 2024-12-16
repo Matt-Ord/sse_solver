@@ -607,7 +607,7 @@ impl Solver for Order2ExplicitWeakR5Solver {
             i_noise: &i_hat,
         };
 
-        let h_00 = &Self::get_h_0_state(state, [], [], &increment);
+        let h_00 = &Self::get_h_0_state::<0>(state, [], [], &increment);
 
         let h_00_coherent =
             &system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, h_00, t + (Self::C0[0] * dt));
@@ -623,7 +623,7 @@ impl Solver for Order2ExplicitWeakR5Solver {
             })
             .collect::<Vec<_>>();
 
-        let h_01 = Self::get_h_0_state(state, [h_00_coherent], [h_k0_incoherent], &increment);
+        let h_01 = Self::get_h_0_state::<1>(state, [h_00_coherent], [h_k0_incoherent], &increment);
 
         let h_k1 = Self::get_h_k_states(state, [h_00_coherent], [h_k0_incoherent], &increment);
 
@@ -646,7 +646,7 @@ impl Solver for Order2ExplicitWeakR5Solver {
             })
             .collect::<Vec<_>>();
 
-        let h_02 = Self::get_h_0_state(
+        let h_02 = Self::get_h_0_state::<2>(
             state,
             [h_00_coherent, h_01_coherent],
             [h_k0_incoherent, h_k1_incoherent],
