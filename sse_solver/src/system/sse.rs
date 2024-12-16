@@ -5,7 +5,7 @@ use num_complex::Complex;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    sparse::{BandedArray, FactorizedArray, SplitScatteringArray, TransposedBandedArray},
+    sparse::{BandedArray, FactorizedArray, SplitScatteringArray, Tensor, TransposedBandedArray},
     system::{SDEOperators, SDEStep, SDESystem},
 };
 
@@ -144,7 +144,7 @@ impl FullNoise<Array2<Complex<f64>>, Array2<Complex<f64>>> {
                 .axis_iter(Axis(0))
                 .map(|o| FullNoiseSource {
                     operator: o.to_owned(),
-                    conjugate_operator: o.map(num_complex::Complex::conj).reversed_axes(),
+                    conjugate_operator: o.map(num_complex::Complex::conj).t().to_owned(),
                 })
                 .collect(),
         )
@@ -200,8 +200,6 @@ impl FullNoise<FactorizedArray<Complex<f64>>, FactorizedArray<Complex<f64>>> {
         Self(sources)
     }
 }
-
-pub trait Tensor: Dot<Array1<Complex<f64>>, Output = Array1<Complex<f64>>> {}
 
 impl<T: Dot<Array1<Complex<f64>>, Output = Array1<Complex<f64>>>> Tensor for T {}
 /// Represents a noise operator in factorized form
@@ -320,7 +318,8 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
 
     #[inline]
     fn get_step_from_parts(parts: &Self::Parts<'_>, step: &SDEStep) -> Array1<Complex<f64>> {
-        let mut diagonal = Complex::default();
+        let mut diagonal_coherent = Complex::<f64>::default();
+        let mut diagonal_stochastic = Complex::default();
         let mut out = Complex {
             re: step.coherent.im,
             im: -step.coherent.re,
@@ -332,17 +331,18 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
             // (L <L^\dagger> - 1 / 2 <L^\dagger><L> - 1 / 2 L^\dagger L) * coherent_step + (L - <L>) * incoherent_step_i |\psi>
 
             // - <L> dw - dt / 2 <L^\dagger><L> |\psi>
-            diagonal -=
-                (dw * part.expectation) + (0.5 * step.coherent * part.expectation.norm_sqr());
+            diagonal_coherent -= 0.5 * step.coherent * part.expectation.norm_sqr();
+            diagonal_stochastic -= dw * part.expectation;
 
             // + dt L <L^\dagger> + dw L |\psi>
+            // TODO: maybe more accurate in other order
             out += &((dw + (part.expectation.conj() * step.coherent)) * &part.l_state);
 
             // - (dt / 2) L^\dagger L |\psi>
             out -= &((0.5 * step.coherent) * &part.l_dagger_l_state);
         }
 
-        out += &(diagonal * parts.state);
+        out += &((diagonal_coherent + diagonal_stochastic) * parts.state);
         out
     }
     #[inline]
@@ -408,7 +408,7 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
             incoherent: parts
                 .stochastic
                 .iter()
-                .map(|p| &p.l_state - p.expectation * parts.state)
+                .map(|p| &p.l_state - (p.expectation * parts.state))
                 .collect(),
         }
     }

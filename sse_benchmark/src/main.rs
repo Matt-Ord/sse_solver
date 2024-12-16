@@ -10,7 +10,7 @@ use sse_solver::{
     distribution::StandardComplexNormal,
     solvers::{EulerSolver, Order2ExplicitWeakSolver, Solver, StateMeasurement},
     sparse::{BandedArray, PlannedSplitScatteringArray, SplitScatteringArray},
-    sse_system::{FullNoise, SSESystem},
+    system::sse::{FullNoise, SSESystem},
 };
 extern crate test;
 use std::simd::{prelude::*, StdFloat};

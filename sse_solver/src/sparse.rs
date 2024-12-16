@@ -8,6 +8,7 @@ use rustfft::{Fft, FftNum, FftPlanner};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+pub trait Tensor: Dot<Array1<Complex<f64>>, Output = Array1<Complex<f64>>> {}
 /// Represents an array, stored as a series of (offset) diagonals
 /// Each diagonal stores elements M_{i+offset % `N_0`, i}
 /// length of diagonals is shape[1], with a total of shape[0] offsets
