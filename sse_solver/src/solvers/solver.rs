@@ -1,7 +1,7 @@
 use ndarray::Array1;
 use num_complex::Complex;
 
-use crate::{sse_system::Tensor, system::SDESystem};
+use crate::{sparse::Tensor, system::SDESystem};
 
 pub trait Measurement {
     type Out;

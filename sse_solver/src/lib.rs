@@ -3,7 +3,6 @@
 pub mod distribution;
 pub mod solvers;
 pub mod sparse;
-pub mod sse_system;
 pub mod system;
 
 #[cfg(test)]
@@ -18,7 +17,7 @@ mod tests {
         distribution::StandardComplexNormal,
         solvers::{EulerSolver, Solver, StateMeasurement},
         sparse::{BandedArray, FactorizedArray},
-        sse_system::{FullNoise, SSESystem},
+        system::sse::{FullNoise, SSESystem},
     };
 
     fn get_random_noise(

@@ -10,7 +10,7 @@ use sse_solver::{
         EulerSolver, MilstenSolver, NormalizedSolver, Order2ExplicitWeakSolverRedux, Solver,
     },
     sparse::{BandedArray, SplitScatteringArray},
-    sse_system::{FullNoise, SSESystem},
+    system::sse::{FullNoise, SSESystem},
     system::SDESystem,
 };
 
@@ -306,8 +306,8 @@ impl BandedData {
     }
 }
 
-impl From<BandedData> for BandedArray<Complex<f64>> {
-    fn from(value: BandedData) -> Self {
+impl From<&BandedData> for BandedArray<Complex<f64>> {
+    fn from(value: &BandedData) -> Self {
         BandedArray::from_sparse(&value.diagonals, &value.offsets, &value.shape)
     }
 }
@@ -327,13 +327,13 @@ fn solve_sse_banded(
 
     let noise = FullNoise::from_banded(
         &noise_operators
-            .into_iter()
+            .iter()
             .map(BandedArray::from)
             .collect::<Vec<_>>(),
     );
     let system = SSESystem {
         noise,
-        hamiltonian: BandedArray::from(hamiltonian.clone()),
+        hamiltonian: BandedArray::from(hamiltonian),
     };
 
     let initial_state = Array1::from(initial_state);
