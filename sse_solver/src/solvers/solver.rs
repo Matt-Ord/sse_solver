@@ -127,32 +127,25 @@ impl<S: Stepper> Solver for DynamicStep<S> {
         let mut out = state.clone();
         let mut res_dt = dt;
 
-        let min_delta_sqr = self.min_delta.powi(2);
-        let max_delta_sqr = self.max_delta.powi(2);
         while res_dt > step_dt {
             let step = self.stepper.step(&out, system, *current_t, step_dt);
 
-            let max_abs = step
+            let current_delta = step
                 .iter()
                 .map(num_complex::Complex::norm_sqr)
-                .fold(0f64, f64::max);
-            if (min_delta_sqr < max_abs) && max_abs < max_delta_sqr {
-                out += &step;
-                *current_t += step_dt;
-                res_dt -= step_dt;
-                continue;
-            }
-            if min_delta_sqr > max_abs {
+                .fold(0f64, f64::max)
+                .sqrt();
+            if (self.min_delta < current_delta) && current_delta < self.max_delta {
                 out += &step;
                 *current_t += step_dt;
                 res_dt -= step_dt;
             }
-            let current_delta = max_abs.sqrt();
+
             let target_delta = 0.5 * (self.min_delta + self.max_delta);
             step_dt *= target_delta / current_delta;
         }
 
-        out += &self.stepper.step(&out, system, *current_t, step_dt);
+        out += &self.stepper.step(&out, system, *current_t, res_dt);
         out
     }
 }
