@@ -37,7 +37,7 @@ impl Stepper for EulerStepper {
                 .collect(),
         };
 
-        state + system.get_step(&step, state, t)
+        system.get_step(&step, state, t)
     }
 }
 
@@ -67,14 +67,13 @@ impl Stepper for MilstenStepper {
             .take(system.n_incoherent())
             .collect::<Vec<_>>();
 
-        let mut out = state.to_owned();
         // The non-supported part of the step
         // Y_k(n+1) = Y_k(n) + a dt + \sum_j \frac{1}{2}  b^j(t, Y(n))_k dW^j - sqrt(dt)(b^j(t, Y(n))_k)
         let simple_step = SDEStep {
             coherent: Complex { re: dt, im: 0f64 },
             incoherent: &noise.iter().map(|d| 0.5f64 * (d + sqrt_dt)).collect(),
         };
-        out += &T::get_step_from_parts(&parts, &simple_step);
+        let mut out = T::get_step_from_parts(&parts, &simple_step);
 
         // Parts for the second supporting value required to calculate b'b term
         // according to eq 11.1.4 in <https://doi.org/10.1007/978-3-662-12616-5>

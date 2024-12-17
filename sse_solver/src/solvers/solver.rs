@@ -100,9 +100,59 @@ impl<S: Stepper> Solver for FixedStep<S> {
         let step_dt = dt / self.n_substeps as f64;
         let mut out = state.clone();
         for _n in 0..self.n_substeps {
-            out = self.stepper.step(&out, system, *current_t, step_dt);
+            out += &self.stepper.step(&out, system, *current_t, step_dt);
             *current_t += step_dt;
         }
+        out
+    }
+}
+
+pub struct DynamicStep<S> {
+    pub stepper: S,
+    pub min_delta: f64,
+    pub max_delta: f64,
+    pub n_substeps_guess: usize,
+}
+
+impl<S: Stepper> Solver for DynamicStep<S> {
+    fn integrate<T: SDESystem>(
+        &self,
+        state: &Array1<Complex<f64>>,
+        system: &T,
+        current_t: &mut f64,
+        dt: f64,
+    ) -> Array1<Complex<f64>> {
+        #[allow(clippy::cast_precision_loss)]
+        let mut step_dt = dt / self.n_substeps_guess as f64;
+        let mut out = state.clone();
+        let mut res_dt = dt;
+
+        let min_delta_sqr = self.min_delta.powi(2);
+        let max_delta_sqr = self.max_delta.powi(2);
+        while res_dt > step_dt {
+            let step = self.stepper.step(&out, system, *current_t, step_dt);
+
+            let max_abs = step
+                .iter()
+                .map(num_complex::Complex::norm_sqr)
+                .fold(0f64, f64::max);
+            if (min_delta_sqr < max_abs) && max_abs < max_delta_sqr {
+                out += &step;
+                *current_t += step_dt;
+                res_dt -= step_dt;
+                continue;
+            }
+            if min_delta_sqr > max_abs {
+                out += &step;
+                *current_t += step_dt;
+                res_dt -= step_dt;
+            }
+            let current_delta = max_abs.sqrt();
+            let target_delta = 0.5 * (self.min_delta + self.max_delta);
+            step_dt *= target_delta / current_delta;
+        }
+
+        out += &self.stepper.step(&out, system, *current_t, step_dt);
         out
     }
 }

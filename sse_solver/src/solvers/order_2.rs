@@ -104,7 +104,7 @@ impl Stepper for ExplicitWeakStepper {
                 }
             }
         }
-        state + step
+        step
     }
 }
 
@@ -346,8 +346,7 @@ impl Stepper for ExplicitWeakR5Stepper {
             &system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, &h_02, t + (Self::C0[2] * dt));
 
         // Y_(n+1) = Y_(n) + \sum_i alpha_i a(t_n+c_i^0h_n, H_i^0)h_n
-        let mut out = state
-            + &(h_00_coherent * (Self::ALPHA[0] * dt))
+        let mut out = &(h_00_coherent * (Self::ALPHA[0] * dt))
             + &(h_01_coherent * (Self::ALPHA[1] * dt))
             + &(h_02_coherent * (Self::ALPHA[2] * dt));
 
