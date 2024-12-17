@@ -131,7 +131,8 @@ impl<S: Stepper> Solver for DynamicStep<S> {
         while res_dt > step_dt {
             let step = self.stepper.step(&out, system, *current_t, step_dt);
 
-            let current_delta = step
+            let current_delta = system
+                .get_coherent_step(step_dt.into(), state, *current_t)
                 .iter()
                 .map(num_complex::Complex::norm_sqr)
                 .fold(0f64, |acc, x| acc + x)
