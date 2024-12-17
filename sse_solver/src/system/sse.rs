@@ -115,7 +115,6 @@ impl<T: Tensor, U: Tensor> FullNoiseSource<T, U> {
             l_dagger_l_state,
         }
     }
-
     #[inline]
     fn get_incoherent_part(
         &self,
@@ -123,11 +122,12 @@ impl<T: Tensor, U: Tensor> FullNoiseSource<T, U> {
         _t: f64,
     ) -> SSEStochasticIncoherentPart {
         let l_state = self.operator.dot(state);
-        let mut expectation = Complex::default();
-        // Todo assert etc to improve perf
-        for i in 0..state.len() {
-            expectation += state[i].conj() * l_state[i];
-        }
+
+        assert_eq!(l_state.len(), state.len());
+        let expectation = state
+            .iter()
+            .zip(l_state.iter())
+            .fold(Complex::default(), |acc, (s, l)| acc + s.conj() * l);
 
         SSEStochasticIncoherentPart {
             expectation,
