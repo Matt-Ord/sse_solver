@@ -8,7 +8,7 @@ use rand::seq::SliceRandom;
 
 use crate::system::SDESystem;
 
-use super::Solver;
+use super::Stepper;
 
 fn calculate_inner_products(states: &Array2<Complex<f64>>) -> Array2<Complex<f64>> {
     let n = states.nrows();
@@ -65,12 +65,12 @@ fn select_random_localized_state(states: &Array2<Complex<f64>>) -> Array1<Comple
 }
 
 #[allow(clippy::module_name_repetitions)]
-pub struct LocalizedSolver<S> {
+pub struct LocalizedStepper<S> {
     pub solver: S,
     pub n_realizations: usize,
 }
 
-impl<S: Solver> Solver for LocalizedSolver<S> {
+impl<S: Stepper> Stepper for LocalizedStepper<S> {
     fn step<T: SDESystem>(
         &self,
         state: &Array1<Complex<f64>>,

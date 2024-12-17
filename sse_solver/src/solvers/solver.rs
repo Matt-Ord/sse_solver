@@ -42,8 +42,7 @@ impl<M0: Measurement, M1: Measurement> Measurement for (M0, M1) {
         (self.0.measure(state), self.1.measure(state))
     }
 }
-
-pub trait Solver {
+pub trait Stepper {
     fn step<T: SDESystem>(
         &self,
         state: &Array1<Complex<f64>>,
@@ -51,22 +50,16 @@ pub trait Solver {
         t: f64,
         dt: f64,
     ) -> Array1<Complex<f64>>;
+}
 
+pub trait Solver {
     fn integrate<T: SDESystem>(
         &self,
         state: &Array1<Complex<f64>>,
         system: &T,
         current_t: &mut f64,
-        n_step: usize,
         dt: f64,
-    ) -> Array1<Complex<f64>> {
-        let mut out = state.clone();
-        for _n in 0..n_step {
-            out = self.step(&out, system, *current_t, dt);
-            *current_t += dt;
-        }
-        out
-    }
+    ) -> Array1<Complex<f64>>;
 
     #[allow(clippy::cast_precision_loss)]
     fn solve<T: SDESystem, M: Measurement>(
@@ -75,7 +68,6 @@ pub trait Solver {
         system: &T,
         measurement: &M,
         n: usize,
-        step: usize,
         dt: f64,
     ) -> Vec<M::Out> {
         let mut out = Vec::with_capacity(n);
@@ -83,10 +75,34 @@ pub trait Solver {
         let mut current_t = 0f64;
         for _step_n in 1..n {
             out.push(measurement.measure(&current));
-            current = self.integrate(&current, system, &mut current_t, step, dt);
+            current = self.integrate(&current, system, &mut current_t, dt);
         }
         out.push(measurement.measure(&current));
 
+        out
+    }
+}
+
+pub struct FixedStep<S> {
+    pub stepper: S,
+    pub n_substeps: usize,
+}
+
+impl<S: Stepper> Solver for FixedStep<S> {
+    fn integrate<T: SDESystem>(
+        &self,
+        state: &Array1<Complex<f64>>,
+        system: &T,
+        current_t: &mut f64,
+        dt: f64,
+    ) -> Array1<Complex<f64>> {
+        #[allow(clippy::cast_precision_loss)]
+        let step_dt = dt / self.n_substeps as f64;
+        let mut out = state.clone();
+        for _n in 0..self.n_substeps {
+            out = self.stepper.step(&out, system, *current_t, step_dt);
+            *current_t += step_dt;
+        }
         out
     }
 }

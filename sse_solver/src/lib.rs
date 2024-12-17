@@ -15,7 +15,7 @@ mod tests {
 
     use crate::{
         distribution::StandardComplexNormal,
-        solvers::{EulerSolver, Solver, StateMeasurement},
+        solvers::{EulerStepper, FixedStepSolver, Solver, StateMeasurement},
         sparse::{BandedArray, FactorizedArray},
         system::sse::{FullNoise, SSESystem},
     };
@@ -97,7 +97,12 @@ mod tests {
         let system = get_random_system(10, n_states);
         let initial_state = get_initial_state(n_states);
 
-        let result = EulerSolver {}.solve(&initial_state, &system, &StateMeasurement {}, 1, 1, 0.0);
+        let result = FixedStepSolver {
+            n_substeps: 1,
+            stepper: EulerStepper {},
+        }
+        .solve(&initial_state, &system, &StateMeasurement {}, 1, 1.0);
+
         assert_eq!(result[0], initial_state);
     }
     #[test]
@@ -107,14 +112,11 @@ mod tests {
         let initial_state = get_initial_state(n_states);
 
         let n_out = 3;
-        let result = EulerSolver {}.solve(
-            &initial_state,
-            &system,
-            &StateMeasurement {},
-            n_out,
-            10,
-            0.0,
-        );
+        let result = FixedStepSolver {
+            n_substeps: 10,
+            stepper: EulerStepper {},
+        }
+        .solve(&initial_state, &system, &StateMeasurement {}, n_out, 0.0);
 
         for res in result {
             assert_eq!(res, initial_state);

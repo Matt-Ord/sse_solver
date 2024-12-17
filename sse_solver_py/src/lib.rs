@@ -3,12 +3,14 @@ use std::thread;
 use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex;
 use pyo3::{exceptions::PyAssertionError, prelude::*};
-use sse_solver::solvers::{Measurement, OperatorMeasurement, StateMeasurement};
+use sse_solver::solvers::{
+    FixedStepSolver, Measurement, OperatorMeasurement, Solver, StateMeasurement, Stepper,
+};
 use sse_solver::sparse::PlannedSplitScatteringArray;
 use sse_solver::{
     solvers::{
-        EulerSolver, MilstenSolver, NormalizedSolver, Order2ExplicitWeakR5Solver,
-        Order2ExplicitWeakSolver, Solver,
+        EulerStepper, MilstenStepper, NormalizedStepper, Order2ExplicitWeakR5Stepper,
+        Order2ExplicitWeakStepper,
     },
     sparse::{BandedArray, SplitScatteringArray},
     system::sse::{FullNoise, SSESystem},
@@ -16,7 +18,7 @@ use sse_solver::{
 };
 
 #[cfg(feature = "localized")]
-use sse_solver::solvers::LocalizedSolver;
+use sse_solver::solvers::LocalizedStepper;
 
 #[derive(Clone, Copy, Hash)]
 enum SSEMethod {
@@ -92,186 +94,95 @@ impl SimulationConfig {
     }
 }
 
+enum DynamicStepper {
+    Euler(EulerStepper),
+    NormalizedEuler(NormalizedStepper<EulerStepper>),
+    Milsten(MilstenStepper),
+    Order2ExplicitWeak(Order2ExplicitWeakStepper),
+    NormalizedOrder2ExplicitWeak(NormalizedStepper<Order2ExplicitWeakStepper>),
+    Order2ExplicitWeakR5(Order2ExplicitWeakR5Stepper),
+    NormalizedOrder2ExplicitWeakR5(NormalizedStepper<Order2ExplicitWeakR5Stepper>),
+}
+
+impl Stepper for DynamicStepper {
+    fn step<T: SDESystem>(
+        &self,
+        state: &Array1<Complex<f64>>,
+        system: &T,
+        t: f64,
+        dt: f64,
+    ) -> Array1<Complex<f64>> {
+        match self {
+            DynamicStepper::Euler(s) => s.step(state, system, t, dt),
+            DynamicStepper::NormalizedEuler(s) => s.step(state, system, t, dt),
+            DynamicStepper::Milsten(s) => s.step(state, system, t, dt),
+            DynamicStepper::Order2ExplicitWeak(s) => s.step(state, system, t, dt),
+            DynamicStepper::NormalizedOrder2ExplicitWeak(s) => s.step(state, system, t, dt),
+            DynamicStepper::Order2ExplicitWeakR5(s) => s.step(state, system, t, dt),
+            DynamicStepper::NormalizedOrder2ExplicitWeakR5(s) => s.step(state, system, t, dt),
+        }
+    }
+}
+
 impl SimulationConfig {
+    fn get_stepper(&self) -> DynamicStepper {
+        match self.method {
+            SSEMethod::Euler => DynamicStepper::Euler(EulerStepper::default()),
+            SSEMethod::NormalizedEuler => {
+                DynamicStepper::NormalizedEuler(NormalizedStepper(EulerStepper::default()))
+            }
+            SSEMethod::Milsten => DynamicStepper::Milsten(MilstenStepper {}),
+            SSEMethod::Order2ExplicitWeak => {
+                DynamicStepper::Order2ExplicitWeak(Order2ExplicitWeakStepper {})
+            }
+            SSEMethod::NormalizedOrder2ExplicitWeak => {
+                DynamicStepper::NormalizedOrder2ExplicitWeak(NormalizedStepper(
+                    Order2ExplicitWeakStepper {},
+                ))
+            }
+            SSEMethod::Order2ExplicitWeakR5 => {
+                DynamicStepper::Order2ExplicitWeakR5(Order2ExplicitWeakR5Stepper {})
+            }
+            SSEMethod::NormalizedOrder2ExplicitWeakR5 => {
+                DynamicStepper::NormalizedOrder2ExplicitWeakR5(NormalizedStepper(
+                    Order2ExplicitWeakR5Stepper {},
+                ))
+            }
+        }
+    }
     fn simulate_single_system<T: SDESystem, M: Measurement>(
         &self,
         initial_state: &Array1<Complex<f64>>,
         system: &T,
         measurement: &M,
     ) -> Vec<M::Out> {
-        match (self.n_realizations, self.method) {
-            (1, SSEMethod::Euler) => EulerSolver::default().solve(
+        let stepper = self.get_stepper();
+        if self.n_realizations == 1 {
+            FixedStepSolver {
+                stepper,
+                n_substeps: self.step,
+            }
+            .solve(
                 initial_state,
                 system,
                 measurement,
                 self.n,
-                self.step,
-                self.dt,
-            ),
-            (n_realizations, SSEMethod::Euler) => {
-                #[cfg(feature = "localized")]
-                return LocalizedSolver {
-                    solver: EulerSolver::default(),
-                    n_realizations,
-                }
-                .solve(
-                    initial_state,
-                    system,
-                    measurement,
-                    self.n,
-                    self.step,
-                    self.dt,
-                );
-                panic!()
+                self.dt * self.step as f64,
+            )
+        } else {
+            #[cfg(feature = "localized")]
+            return LocalizedStepper {
+                solver,
+                n_realizations: self.n_realizations,
             }
-            (1, SSEMethod::NormalizedEuler) => NormalizedSolver(EulerSolver::default()).solve(
+            .solve(
                 initial_state,
                 system,
                 measurement,
                 self.n,
-                self.step,
-                self.dt,
-            ),
-            (n_realizations, SSEMethod::NormalizedEuler) => {
-                #[cfg(feature = "localized")]
-                return LocalizedSolver {
-                    solver: EulerSolver::default(),
-                    n_realizations,
-                }
-                .solve(
-                    initial_state,
-                    system,
-                    measurement,
-                    self.n,
-                    self.step,
-                    self.dt,
-                );
-                panic!()
-            }
-            (1, SSEMethod::Milsten) => MilstenSolver {}.solve(
-                initial_state,
-                system,
-                measurement,
-                self.n,
-                self.step,
-                self.dt,
-            ),
-            (n_realizations, SSEMethod::Milsten) => {
-                #[cfg(feature = "localized")]
-                return LocalizedSolver {
-                    solver: MilstenSolver {},
-                    n_realizations,
-                }
-                .solve(
-                    initial_state,
-                    system,
-                    measurement,
-                    self.n,
-                    self.step,
-                    self.dt,
-                );
-                panic!()
-            }
-            (1, SSEMethod::Order2ExplicitWeak) => Order2ExplicitWeakSolver {}.solve(
-                initial_state,
-                system,
-                measurement,
-                self.n,
-                self.step,
-                self.dt,
-            ),
-            (n_realizations, SSEMethod::Order2ExplicitWeak) => {
-                #[cfg(feature = "localized")]
-                return LocalizedSolver {
-                    solver: Order2ExplicitWeakSolver {},
-                    n_realizations,
-                }
-                .solve(
-                    initial_state,
-                    system,
-                    measurement,
-                    self.n,
-                    self.step,
-                    self.dt,
-                );
-                panic!()
-            }
-            (1, SSEMethod::NormalizedOrder2ExplicitWeak) => {
-                NormalizedSolver(Order2ExplicitWeakSolver {}).solve(
-                    initial_state,
-                    system,
-                    measurement,
-                    self.n,
-                    self.step,
-                    self.dt,
-                )
-            }
-            (n_realizations, SSEMethod::NormalizedOrder2ExplicitWeak) => {
-                #[cfg(feature = "localized")]
-                return LocalizedSolver {
-                    solver: NormalizedSolver(Order2ExplicitWeakSolver {}),
-                    n_realizations,
-                }
-                .solve(
-                    initial_state,
-                    system,
-                    measurement,
-                    self.n,
-                    self.step,
-                    self.dt,
-                );
-                panic!()
-            }
-            (1, SSEMethod::Order2ExplicitWeakR5) => Order2ExplicitWeakR5Solver {}.solve(
-                initial_state,
-                system,
-                measurement,
-                self.n,
-                self.step,
-                self.dt,
-            ),
-            (n_realizations, SSEMethod::Order2ExplicitWeakR5) => {
-                #[cfg(feature = "localized")]
-                return LocalizedSolver {
-                    solver: Order2ExplicitWeakR5Solver {},
-                    n_realizations,
-                }
-                .solve(
-                    initial_state,
-                    system,
-                    measurement,
-                    self.n,
-                    self.step,
-                    self.dt,
-                );
-                panic!()
-            }
-            (1, SSEMethod::NormalizedOrder2ExplicitWeakR5) => {
-                NormalizedSolver(Order2ExplicitWeakR5Solver {}).solve(
-                    initial_state,
-                    system,
-                    measurement,
-                    self.n,
-                    self.step,
-                    self.dt,
-                )
-            }
-            (n_realizations, SSEMethod::NormalizedOrder2ExplicitWeakR5) => {
-                #[cfg(feature = "localized")]
-                return LocalizedSolver {
-                    solver: NormalizedSolver(Order2ExplicitWeakR5Solver {}),
-                    n_realizations,
-                }
-                .solve(
-                    initial_state,
-                    system,
-                    measurement,
-                    self.n,
-                    self.step,
-                    self.dt,
-                );
-                panic!()
-            }
+                self.dt * self.step as f64,
+            );
+            panic!()
         }
     }
 
