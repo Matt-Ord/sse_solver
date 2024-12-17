@@ -29,16 +29,13 @@ def solve_sse_measured_split_operator(
 ) -> list[complex]: ...
 
 class SimulationConfig:
-    def __init__(  # noqa: PLR0913
+    def __init__[_A: float | None, _B: float | None](  # noqa: PLR0913
         self: SimulationConfig,
         *,
         n: int,
         step: int,
         dt: float,
-        delta: tuple[float, float | None]
-        | tuple[float, float]
-        | tuple[float, None]
-        | None = None,
+        delta: tuple[_A, float, _B] | None = None,
         n_trajectories: int = 1,
         n_realizations: int = 1,
         method: SSEMethod,
