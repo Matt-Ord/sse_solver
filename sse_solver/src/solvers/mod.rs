@@ -5,25 +5,28 @@ use num_complex::Complex;
 use crate::system::SDESystem;
 
 mod order_1;
-pub use order_1::{EulerSolver, MilstenSolver};
+pub use order_1::{EulerStepper, MilstenStepper};
 
 mod order_2;
 pub use order_2::{
-    ExplicitWeakR5Solver as Order2ExplicitWeakR5Solver,
-    ExplicitWeakSolver as Order2ExplicitWeakSolver,
+    ExplicitWeakR5Stepper as Order2ExplicitWeakR5Stepper,
+    ExplicitWeakStepper as Order2ExplicitWeakStepper,
 };
 
 pub mod solver;
-pub use solver::*;
+pub use solver::{
+    FixedStep as FixedStepSolver, Measurement, OperatorMeasurement, Solver, StateMeasurement,
+    Stepper,
+};
 #[cfg(feature = "localized")]
 pub mod localized;
 #[cfg(feature = "localized")]
 pub use localized::*;
 
 #[derive(Default)]
-pub struct NormalizedSolver<S>(pub S);
+pub struct NormalizedStepper<S>(pub S);
 
-impl<S: Solver> Solver for NormalizedSolver<S> {
+impl<S: Stepper> Stepper for NormalizedStepper<S> {
     fn step<T: SDESystem>(
         &self,
         state: &Array1<Complex<f64>>,

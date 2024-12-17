@@ -8,13 +8,13 @@ use crate::{
     system::{SDEStep, SDESystem},
 };
 
-use super::Solver;
+use super::Stepper;
 
 #[derive(Default)]
 #[allow(clippy::module_name_repetitions)]
-pub struct EulerSolver {}
+pub struct EulerStepper {}
 
-impl Solver for EulerSolver {
+impl Stepper for EulerStepper {
     fn step<T: SDESystem>(
         &self,
         state: &Array1<Complex<f64>>,
@@ -41,9 +41,9 @@ impl Solver for EulerSolver {
     }
 }
 
-pub struct MilstenSolver {}
+pub struct MilstenStepper {}
 
-impl Solver for MilstenSolver {
+impl Stepper for MilstenStepper {
     fn step<T: SDESystem>(
         &self,
         state: &Array1<Complex<f64>>,

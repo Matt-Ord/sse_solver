@@ -419,7 +419,7 @@ mod test {
     use ndarray::{Array1, Array2, Array3};
     use num_complex::Complex;
 
-    use crate::solvers::{EulerSolver, Solver, StateMeasurement};
+    use crate::solvers::{EulerStepper, FixedStepSolver, Solver, StateMeasurement};
     use crate::tests::{get_initial_state, get_random_system};
 
     use super::{FullNoise, SSESystem};
@@ -467,20 +467,26 @@ mod test {
 
         let n_out = 30;
         let dt = 1f64;
-        let diagonal_result = EulerSolver {}.solve(
+        let diagonal_result = FixedStepSolver {
+            stepper: EulerStepper {},
+            n_substeps: 10,
+        }
+        .solve(
             &initial_state,
             &diagonal_system,
             &StateMeasurement {},
             n_out,
-            10,
             dt,
         );
-        let result_full = EulerSolver {}.solve(
+        let result_full = FixedStepSolver {
+            stepper: EulerStepper {},
+            n_substeps: 10,
+        }
+        .solve(
             &initial_state,
             &full_system,
             &StateMeasurement {},
             n_out,
-            10,
             dt,
         );
 

@@ -9,16 +9,16 @@ use crate::{
     system::{SDEStep, SDESystem},
 };
 
-use super::Solver;
+use super::Stepper;
 
 /// The Order 2 General Weak Taylor Scheme defined in 5.1 of
 /// <https://www.jstor.org/stable/27862707>
 ///
 /// This method scales poorly for large n operators compared
 /// to the other methods discussed in the paper
-pub struct ExplicitWeakSolver {}
+pub struct ExplicitWeakStepper {}
 
-impl Solver for ExplicitWeakSolver {
+impl Stepper for ExplicitWeakStepper {
     fn step<T: SDESystem>(
         &self,
         state: &Array1<Complex<f64>>,
@@ -108,16 +108,16 @@ impl Solver for ExplicitWeakSolver {
     }
 }
 
-/// The R5 Solver defined in
+/// The R5 Stepper defined in
 /// <https://www.jstor.org/stable/27862707>
 ///
 /// See 5.4 for the SRK formula
 /// See Table 5.2 for the various weights
 ///
 /// Note in this implimentation we assume a(t) = a(0)
-pub struct ExplicitWeakR5Solver {}
+pub struct ExplicitWeakR5Stepper {}
 
-impl ExplicitWeakR5Solver {
+impl ExplicitWeakR5Stepper {
     // Note: for explicit solvers, A and B are lower diagonals
     pub const A0: [[f64; 3]; 3] = [
         [0.0, 0.0, 0.0],
@@ -190,7 +190,7 @@ impl Increment {
     }
 }
 
-impl ExplicitWeakR5Solver {
+impl ExplicitWeakR5Stepper {
     // Note: for explicit solvers, A and B are lower diagonals
     #[inline]
     #[must_use]
@@ -273,7 +273,7 @@ impl ExplicitWeakR5Solver {
     }
 }
 
-impl Solver for ExplicitWeakR5Solver {
+impl Stepper for ExplicitWeakR5Stepper {
     #[allow(clippy::too_many_lines, clippy::similar_names)]
     fn step<T: SDESystem>(
         &self,

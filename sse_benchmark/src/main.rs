@@ -8,7 +8,7 @@ use num_complex::Complex;
 use rand::Rng;
 use sse_solver::{
     distribution::StandardComplexNormal,
-    solvers::{EulerSolver, Order2ExplicitWeakSolver, Solver, StateMeasurement},
+    solvers::{EulerStepper, FixedStepSolver, Order2ExplicitWeakStepper, Solver, StateMeasurement},
     sparse::{BandedArray, PlannedSplitScatteringArray, SplitScatteringArray},
     system::sse::{FullNoise, SSESystem},
 };
@@ -39,15 +39,14 @@ fn euler_solver_benchmark() {
     let system = SSESystem { noise, hamiltonian };
     let n = 1000;
     let step = 1000;
-    let dt = 0.0001;
-    test::black_box(EulerSolver {}.solve(
-        &initial_state,
-        &system,
-        &StateMeasurement {},
-        n,
-        step,
-        dt,
-    ));
+    let dt = 0.1;
+    test::black_box(
+        FixedStepSolver {
+            n_substeps: step,
+            stepper: EulerStepper {},
+        }
+        .solve(&initial_state, &system, &StateMeasurement {}, n, dt),
+    );
 }
 #[allow(dead_code)]
 fn euler_solver_benchmark_full() {
@@ -70,15 +69,14 @@ fn euler_solver_benchmark_full() {
     let system = SSESystem { noise, hamiltonian };
     let n = 100;
     let step = 4000;
-    let dt = 0.0001;
-    test::black_box(EulerSolver {}.solve(
-        &initial_state,
-        &system,
-        &StateMeasurement {},
-        n,
-        step,
-        dt,
-    ));
+    let dt = 0.4;
+    test::black_box(
+        FixedStepSolver {
+            n_substeps: step,
+            stepper: EulerStepper {},
+        }
+        .solve(&initial_state, &system, &StateMeasurement {}, n, dt),
+    );
 }
 
 #[allow(dead_code)]
@@ -117,15 +115,14 @@ fn euler_solver_benchmark_sparse() {
 
     let n = 800;
     let step = 8000;
-    let dt = 1.25e-17;
-    test::black_box(EulerSolver {}.solve(
-        &initial_state,
-        &system,
-        &StateMeasurement {},
-        n,
-        step,
-        dt,
-    ));
+    let dt = 8000.0 * 1.25e-17;
+    test::black_box(
+        FixedStepSolver {
+            n_substeps: step,
+            stepper: EulerStepper {},
+        }
+        .solve(&initial_state, &system, &StateMeasurement {}, n, dt),
+    );
 }
 #[allow(dead_code)]
 fn second_order_solver_benchmark_sparse() {
@@ -172,15 +169,14 @@ fn second_order_solver_benchmark_sparse() {
 
     let n = 100;
     let step = 20000;
-    let dt = 1.0;
-    test::black_box(Order2ExplicitWeakSolver {}.solve(
-        &initial_state,
-        &system,
-        &StateMeasurement {},
-        n,
-        step,
-        dt,
-    ));
+    let dt = 1.0 / 20000.0;
+    test::black_box(
+        FixedStepSolver {
+            n_substeps: step,
+            stepper: Order2ExplicitWeakStepper {},
+        }
+        .solve(&initial_state, &system, &StateMeasurement {}, n, dt),
+    );
 }
 
 fn euler_solver_full_matrix_optimal_benchmark_step(
