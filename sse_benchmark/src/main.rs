@@ -129,7 +129,7 @@ fn euler_solver_benchmark_sparse() {
 }
 #[allow(dead_code)]
 fn second_order_solver_benchmark_sparse() {
-    let mut initial_state = Array1::from_elem([93], Complex { im: 0f64, re: 0f64 });
+    let mut initial_state = Array1::from_elem([180], Complex { im: 0f64, re: 0f64 });
     initial_state[0] = Complex {
         re: 1f64,
         ..Default::default()
@@ -139,7 +139,10 @@ fn second_order_solver_benchmark_sparse() {
         &Vec::from_iter((0..3).map(|_| {
             Vec::from_iter(Array1::<Complex<f64>>::from_elem(
                 [initial_state.len()],
-                Complex { re: 1f64, im: 3f64 },
+                Complex {
+                    re: 1e-5f64,
+                    im: 0f64,
+                },
             ))
         })),
         &[0, 3, 90],
@@ -147,11 +150,17 @@ fn second_order_solver_benchmark_sparse() {
     );
 
     let noise = FullNoise::from_banded(
-        &(0..6)
+        &(0..4)
             .map(|_i| {
                 BandedArray::from_sparse(
                     &Vec::from_iter((0..2).map(|_| {
-                        Vec::from_iter(Array1::<Complex<f64>>::ones([initial_state.len()]))
+                        Vec::from_iter(Array1::<Complex<f64>>::from_elem(
+                            [initial_state.len()],
+                            Complex {
+                                re: 1e-6f64,
+                                im: 0f64,
+                            },
+                        ))
                     })),
                     &Vec::from_iter(0..2),
                     &[initial_state.len(), initial_state.len()],
@@ -161,9 +170,9 @@ fn second_order_solver_benchmark_sparse() {
     );
     let system = SSESystem { noise, hamiltonian };
 
-    let n = 80;
-    let step = 8000;
-    let dt = 1.25e-17;
+    let n = 100;
+    let step = 20000;
+    let dt = 1.0;
     test::black_box(Order2ExplicitWeakSolver {}.solve(
         &initial_state,
         &system,
@@ -173,6 +182,7 @@ fn second_order_solver_benchmark_sparse() {
         dt,
     ));
 }
+
 fn euler_solver_full_matrix_optimal_benchmark_step(
     state: &Array1<Complex<f64>>,
     h: &Array2<Complex<f64>>,
@@ -636,5 +646,5 @@ fn mul_rand_array() {
     test::black_box(mul_bench(lhs, rhs, test::black_box(500000)));
 }
 fn main() {
-    split_array_dot_benchmark()
+    second_order_solver_benchmark_sparse()
 }
