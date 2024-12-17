@@ -160,15 +160,15 @@ impl Increment {
         self.i_hat_noise.len()
     }
 
-    fn i_bar_pair_noise(&self, i: usize, j: usize) -> f64 {
-        let product = self.i_hat_noise[i] * self.i_hat_noise[j];
-        if i == j {
+    fn i_bar_pair_noise(&self, k: usize, l: usize) -> f64 {
+        let product = self.i_hat_noise[k] * self.i_hat_noise[l];
+        if k == l {
             return 0.5 * (product - self.dt);
         }
-        if i < j {
-            0.5 * (product - self.sqrt_dt * self.i_bar_noise[i])
+        if k < l {
+            0.5 * (product - (self.sqrt_dt * self.i_bar_noise[k]))
         } else {
-            0.5 * (product + self.sqrt_dt * self.i_bar_noise[j])
+            0.5 * (product + (self.sqrt_dt * self.i_bar_noise[l]))
         }
     }
 
@@ -214,7 +214,7 @@ impl ExplicitWeakR5Solver {
             if Self::B0[I][j] != 0.0 {
                 step.iter()
                     .zip(&increment.i_hat_noise)
-                    .for_each(|(b, i_hat)| out += &(b * (Self::B0[I][j] * i_hat)));
+                    .for_each(|(b, i_hat_l)| out += &(b * (Self::B0[I][j] * i_hat_l)));
             }
         }
 
@@ -367,7 +367,7 @@ impl Solver for ExplicitWeakR5Solver {
             .zip(&increment.i_hat_noise)
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA1[1] * i_hat_k)
-                    + ((Self::BETA2[1] / increment.sqrt_dt) * ((i_hat_k * i_hat_k) - dt));
+                    + ((0.5 * Self::BETA2[1] / increment.sqrt_dt) * ((i_hat_k * i_hat_k) - dt));
                 out += &(b_k * factor);
             });
 
