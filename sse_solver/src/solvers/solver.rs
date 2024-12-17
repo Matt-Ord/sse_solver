@@ -134,7 +134,7 @@ impl<S: Stepper> Solver for DynamicStep<S> {
             let current_delta = step
                 .iter()
                 .map(num_complex::Complex::norm_sqr)
-                .fold(0f64, f64::max)
+                .fold(0f64, |acc, x| acc + x)
                 .sqrt();
             if (self.min_delta < current_delta) && current_delta < self.max_delta {
                 out += &step;
