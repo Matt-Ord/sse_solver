@@ -148,19 +148,19 @@ impl ExplicitWeakR5Solver {
     pub const BETA4: [f64; 3] = [0.0, 0.5, -0.5];
 }
 
-struct Increment<'a> {
-    i_hat_noise: &'a Vec<Complex<f64>>,
-    i_bar_noise: &'a Vec<Complex<f64>>,
+struct Increment {
+    i_hat_noise: Vec<f64>,
+    i_bar_noise: Vec<f64>,
     dt: f64,
     sqrt_dt: f64,
 }
 
-impl<'a> Increment<'a> {
+impl Increment {
     fn n_incoherent(&self) -> usize {
         self.i_hat_noise.len()
     }
 
-    fn i_bar_pair_noise(&self, i: usize, j: usize) -> Complex<f64> {
+    fn i_bar_pair_noise(&self, i: usize, j: usize) -> f64 {
         let product = self.i_hat_noise[i] * self.i_hat_noise[j];
         if i == j {
             return 0.5 * (product - self.dt);
@@ -171,35 +171,53 @@ impl<'a> Increment<'a> {
             0.5 * (product + self.sqrt_dt * self.i_bar_noise[j])
         }
     }
+
+    fn new(n_incoherent: usize, dt: f64) -> Self {
+        let rng = rand::thread_rng();
+        let i_hat_noise = ThreePointW::new(dt)
+            .sample_iter(rng.clone())
+            .take(n_incoherent)
+            .collect::<Vec<_>>();
+        let i_bar_noise = TwoPointW::new(dt)
+            .sample_iter(rng.clone())
+            .take(n_incoherent)
+            .collect::<Vec<_>>();
+        Self {
+            i_hat_noise,
+            i_bar_noise,
+            dt,
+            sqrt_dt: dt.sqrt(),
+        }
+    }
 }
 
 impl ExplicitWeakR5Solver {
     // Note: for explicit solvers, A and B are lower diagonals
     #[inline]
     #[must_use]
-    fn get_h_0_state<const N: usize>(
+    fn get_h_0_state<const I: usize>(
         state: &Array1<Complex<f64>>,
-        coherent_steps: [&Array1<Complex<f64>>; N],
-        incoherent_steps: [&Vec<Array1<Complex<f64>>>; N],
+        coherent_steps: [&Array1<Complex<f64>>; I],
+        incoherent_steps: [&Vec<Array1<Complex<f64>>>; I],
         increment: &Increment,
     ) -> Array1<Complex<f64>> {
-        debug_assert_eq!(N, incoherent_steps.len());
+        debug_assert_eq!(I, incoherent_steps.len());
 
         let mut out = state.clone();
-        for (i, step) in coherent_steps.into_iter().enumerate() {
-            if Self::A0[N][i] != 0.0 {
+        for (j, step) in coherent_steps.into_iter().enumerate() {
+            if Self::A0[I][j] != 0.0 {
                 out += &(Complex {
-                    re: Self::A0[N][i] * increment.dt,
+                    re: Self::A0[I][j] * increment.dt,
                     im: 0.0,
                 } * step);
             }
         }
 
-        for (i, step) in incoherent_steps.into_iter().enumerate() {
-            if Self::B0[N][i] != 0.0 {
+        for (j, step) in incoherent_steps.into_iter().enumerate() {
+            if Self::B0[I][j] != 0.0 {
                 step.iter()
-                    .zip(increment.i_hat_noise)
-                    .for_each(|(b, i_hat)| out += &((Self::B0[N][i] * i_hat) * b));
+                    .zip(&increment.i_hat_noise)
+                    .for_each(|(b, i_hat)| out += &(b * (Self::B0[I][j] * i_hat)));
             }
         }
 
@@ -208,27 +226,27 @@ impl ExplicitWeakR5Solver {
 
     #[inline]
     #[must_use]
-    fn get_h_k_states<const N: usize>(
+    fn get_h_k_states<const I: usize>(
         state: &Array1<Complex<f64>>,
-        coherent_steps: [&Array1<Complex<f64>>; N],
-        incoherent_steps: [&Vec<Array1<Complex<f64>>>; N],
+        coherent_steps: [&Array1<Complex<f64>>; I],
+        incoherent_steps: [&Vec<Array1<Complex<f64>>>; I],
         increment: &Increment,
     ) -> Vec<Array1<Complex<f64>>> {
         (0..increment.n_incoherent())
             .map(|ik| {
                 let mut out = state.clone();
-                for (i, step) in coherent_steps.into_iter().enumerate() {
-                    if Self::A1[N][i] != 0.0 {
+                for (j, step) in coherent_steps.into_iter().enumerate() {
+                    if Self::A1[I][j] != 0.0 {
                         out += &(Complex {
-                            re: Self::A1[N][i] * increment.dt,
+                            re: Self::A1[I][j] * increment.dt,
                             im: 0.0,
                         } * step);
                     }
                 }
-                for (i, steps) in incoherent_steps.into_iter().enumerate() {
-                    if Self::B1[N][i] != 0.0 {
+                for (j, steps) in incoherent_steps.into_iter().enumerate() {
+                    if Self::B1[I][j] != 0.0 {
                         out += &(Complex {
-                            re: Self::B1[N][i] * increment.dt.sqrt(),
+                            re: Self::B1[I][j] * increment.dt.sqrt(),
                             im: 0.0,
                         } * &steps[ik]);
                     }
@@ -239,34 +257,32 @@ impl ExplicitWeakR5Solver {
     }
     #[inline]
     #[must_use]
-    fn get_h_hat_k_states<const N: usize>(
+    fn get_h_hat_k_states<const I: usize>(
         state: &Array1<Complex<f64>>,
-        coherent_steps: [&Array1<Complex<f64>>; N],
-        incoherent_steps: [&Vec<Array1<Complex<f64>>>; N],
+        coherent_steps: [&Array1<Complex<f64>>; I],
+        incoherent_steps: [&Vec<Array1<Complex<f64>>>; I],
         increment: &Increment,
     ) -> Vec<Array1<Complex<f64>>> {
-        let sqrt_dt = increment.dt.sqrt();
-
         (0..increment.n_incoherent())
             .map(|ik| {
                 let mut out = state.clone();
-                for (i, step) in coherent_steps.into_iter().enumerate() {
-                    if Self::A2[N][i] != 0.0 {
+                for (j, step) in coherent_steps.into_iter().enumerate() {
+                    if Self::A2[I][j] != 0.0 {
                         out += &(Complex {
-                            re: Self::A2[N][i] * increment.dt,
+                            re: Self::A2[I][j] * increment.dt,
                             im: 0.0,
                         } * step);
                     }
                 }
-                for (i, steps) in incoherent_steps.into_iter().enumerate() {
-                    if Self::B2[N][i] != 0.0 {
+                for (j, steps) in incoherent_steps.into_iter().enumerate() {
+                    if Self::B2[I][j] != 0.0 {
                         steps.iter().enumerate().for_each(|(il, step)| {
                             if il == ik {
                                 return;
                             }
-                            let factor = increment.i_bar_pair_noise(il, ik);
+                            let factor = increment.i_bar_pair_noise(ik, il) / increment.sqrt_dt;
 
-                            out += &((Self::B2[N][i] * factor / sqrt_dt) * step);
+                            out += &(step * (Self::B2[I][j] * factor));
                         });
                     }
                 }
@@ -285,26 +301,7 @@ impl Solver for ExplicitWeakR5Solver {
         t: f64,
         dt: f64,
     ) -> Array1<Complex<f64>> {
-        let rng = rand::thread_rng();
-
-        let i_hat = ThreePointW::new(dt)
-            .sample_iter(rng.clone())
-            .take(system.n_incoherent())
-            .map(|d| Complex { re: d, im: 0.0 })
-            .collect::<Vec<_>>();
-
-        let i_bar = TwoPointW::new(dt)
-            .sample_iter(rng.clone())
-            .take(system.n_incoherent())
-            .map(|d| Complex { re: d, im: 0.0 })
-            .collect::<Vec<_>>();
-
-        let increment = Increment {
-            dt,
-            i_bar_noise: &i_bar,
-            i_hat_noise: &i_hat,
-            sqrt_dt: dt.sqrt(),
-        };
+        let increment = Increment::new(system.n_incoherent(), dt);
 
         let h_00 = &Self::get_h_0_state::<0>(state, [], [], &increment);
 
@@ -386,20 +383,20 @@ impl Solver for ExplicitWeakR5Solver {
         // Y_(n+1) += \sum_i \sum_k b^k(t, H_k) (i hat_k beta_i(1) + i_k,k hat / sqrt(dt))
         h_k0_incoherent
             .iter()
-            .zip(i_hat.iter())
+            .zip(&increment.i_hat_noise)
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA1[0] * i_hat_k)
                     + ((0.5 * Self::BETA2[0] / increment.sqrt_dt) * ((i_hat_k * i_hat_k) - dt));
-                out += &(factor * b_k);
+                out += &(b_k * factor);
             });
 
         h_k1_incoherent
             .iter()
-            .zip(i_hat.iter())
+            .zip(&increment.i_hat_noise)
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA1[1] * i_hat_k)
                     + ((Self::BETA2[1] / increment.sqrt_dt) * ((i_hat_k * i_hat_k) - dt));
-                out += &(factor * b_k);
+                out += &(b_k * factor);
             });
 
         let h_k2_incoherent = h_k2
@@ -417,11 +414,11 @@ impl Solver for ExplicitWeakR5Solver {
 
         h_k2_incoherent
             .iter()
-            .zip(i_hat.iter())
+            .zip(&increment.i_hat_noise)
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA1[2] * i_hat_k)
                     + ((0.5 * Self::BETA2[2] / increment.sqrt_dt) * ((i_hat_k * i_hat_k) - dt));
-                out += &(factor * b_k);
+                out += &(b_k * factor);
             });
 
         let h_hat_k0_incoherent =
@@ -438,10 +435,10 @@ impl Solver for ExplicitWeakR5Solver {
 
         // Y_(n+1) += \sum_i \sum_k b^k(t, H_hat_k) (i hat_k beta_i(3) + beta_i(4)*sqrt(dt))
         h_hat_k0_incoherent
-            .zip(i_hat.iter())
+            .zip(&increment.i_hat_noise)
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA3[0] * i_hat_k) + (Self::BETA4[0] * increment.sqrt_dt);
-                out += &(factor * b_k);
+                out += &(b_k * factor);
             });
 
         let h_hat_k1_incoherent = h_hat_k1.iter().enumerate().map(|(idx, s)| {
@@ -449,10 +446,10 @@ impl Solver for ExplicitWeakR5Solver {
         });
 
         h_hat_k1_incoherent
-            .zip(i_hat.iter())
+            .zip(&increment.i_hat_noise)
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA3[1] * i_hat_k) + (Self::BETA4[1] * increment.sqrt_dt);
-                out += &(factor * b_k);
+                out += &(b_k * factor);
             });
 
         let h_hat_k2_incoherent = h_hat_k2.iter().enumerate().map(|(idx, s)| {
@@ -460,10 +457,10 @@ impl Solver for ExplicitWeakR5Solver {
         });
 
         h_hat_k2_incoherent
-            .zip(i_hat.iter())
+            .zip(&increment.i_hat_noise)
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA3[2] * i_hat_k) + (Self::BETA4[2] * increment.sqrt_dt);
-                out += &(factor * b_k);
+                out += &(b_k * factor);
             });
         out
     }
