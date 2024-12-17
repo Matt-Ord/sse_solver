@@ -1,4 +1,5 @@
 use ndarray::Array1;
+use ndarray_linalg::Norm;
 use num_complex::Complex;
 
 use crate::{sparse::Tensor, system::SDESystem};
@@ -109,8 +110,9 @@ impl<S: Stepper> Solver for FixedStep<S> {
 
 pub struct DynamicStep<S> {
     pub stepper: S,
-    pub min_delta: f64,
-    pub max_delta: f64,
+    pub min_delta: Option<f64>,
+    pub max_delta: Option<f64>,
+    pub target_delta: f64,
     pub n_substeps_guess: usize,
 }
 
@@ -126,24 +128,20 @@ impl<S: Stepper> Solver for DynamicStep<S> {
         let mut step_dt = dt / self.n_substeps_guess as f64;
         let mut out = state.clone();
         let mut res_dt = dt;
-        let target_delta = 0.5 * (self.min_delta + self.max_delta);
 
         while res_dt > step_dt {
             let step = self.stepper.step(&out, system, *current_t, step_dt);
 
-            let current_delta = system
-                .get_coherent_step(step_dt.into(), state, *current_t)
-                .iter()
-                .map(num_complex::Complex::norm_sqr)
-                .fold(0f64, |acc, x| acc + x)
-                .sqrt();
-            if (self.min_delta < current_delta) && current_delta < self.max_delta {
+            let current_delta = step.norm_l2();
+            if (self.min_delta.is_none_or(|d| d < current_delta))
+                && self.max_delta.is_none_or(|d| current_delta < d)
+            {
                 out += &step;
                 *current_t += step_dt;
                 res_dt -= step_dt;
             }
 
-            step_dt *= target_delta / current_delta;
+            step_dt *= self.target_delta / current_delta;
         }
 
         out += &self.stepper.step(&out, system, *current_t, res_dt);

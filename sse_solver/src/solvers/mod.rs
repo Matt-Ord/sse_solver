@@ -34,12 +34,12 @@ impl<S: Stepper> Stepper for NormalizedStepper<S> {
         t: f64,
         dt: f64,
     ) -> Array1<Complex<f64>> {
-        let mut out = self.0.step(state, system, t, dt);
+        let mut next = state + self.0.step(state, system, t, dt);
         // Normalize the state
-        out /= Complex {
-            re: out.norm_l2(),
+        next /= Complex {
+            re: next.norm_l2(),
             im: 0f64,
         };
-        out
+        next - state
     }
 }

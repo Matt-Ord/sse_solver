@@ -41,7 +41,7 @@ struct SimulationConfig {
     #[pyo3(get, set)]
     dt: f64,
     #[pyo3(get, set)]
-    delta: Option<(f64, Option<f64>)>,
+    delta: Option<(Option<f64>, f64, Option<f64>)>,
     #[pyo3(get, set)]
     n_trajectories: usize,
     #[pyo3(get, set)]
@@ -57,7 +57,7 @@ impl SimulationConfig {
         n: usize,
         step: usize,
         dt: f64,
-        delta: Option<(f64, Option<f64>)>,
+        delta: Option<(Option<f64>, f64, Option<f64>)>,
         n_trajectories: usize,
         method: &str,
         n_realizations: usize,
@@ -165,8 +165,9 @@ impl SimulationConfig {
         if self.n_realizations == 1 {
             if let Some(delta) = self.delta {
                 return DynamicStepSolver {
-                    max_delta: delta.0,
-                    min_delta: delta.1.unwrap_or(0.1 * delta.0),
+                    max_delta: delta.2,
+                    target_delta: delta.1,
+                    min_delta: delta.0,
                     stepper,
                     n_substeps_guess: self.step,
                 }
