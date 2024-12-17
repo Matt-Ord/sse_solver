@@ -35,6 +35,10 @@ class SimulationConfig:
         n: int,
         step: int,
         dt: float,
+        delta: tuple[float, float | None]
+        | tuple[float, float]
+        | tuple[float, None]
+        | None = None,
         n_trajectories: int = 1,
         n_realizations: int = 1,
         method: SSEMethod,

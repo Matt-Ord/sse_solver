@@ -4,7 +4,8 @@ use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex;
 use pyo3::{exceptions::PyAssertionError, prelude::*};
 use sse_solver::solvers::{
-    FixedStepSolver, Measurement, OperatorMeasurement, Solver, StateMeasurement, Stepper,
+    DynamicStepSolver, FixedStepSolver, Measurement, OperatorMeasurement, Solver, StateMeasurement,
+    Stepper,
 };
 use sse_solver::sparse::PlannedSplitScatteringArray;
 use sse_solver::{
@@ -40,6 +41,8 @@ struct SimulationConfig {
     #[pyo3(get, set)]
     dt: f64,
     #[pyo3(get, set)]
+    delta: Option<(f64, Option<f64>)>,
+    #[pyo3(get, set)]
     n_trajectories: usize,
     #[pyo3(get, set)]
     n_realizations: usize,
@@ -49,11 +52,12 @@ struct SimulationConfig {
 #[pymethods]
 impl SimulationConfig {
     #[new]
-    #[pyo3(signature = (*, n, step, dt, n_trajectories=1,method,n_realizations=1))]
+    #[pyo3(signature = (*, n, step, dt, delta=None, n_trajectories=1, method, n_realizations=1))]
     fn new(
         n: usize,
         step: usize,
         dt: f64,
+        delta: Option<(f64, Option<f64>)>,
         n_trajectories: usize,
         method: &str,
         n_realizations: usize,
@@ -72,6 +76,7 @@ impl SimulationConfig {
             n,
             step,
             dt,
+            delta,
             n_trajectories,
             method: method_enum,
             n_realizations,
@@ -158,6 +163,21 @@ impl SimulationConfig {
     ) -> Vec<M::Out> {
         let stepper = self.get_stepper();
         if self.n_realizations == 1 {
+            if let Some(delta) = self.delta {
+                return DynamicStepSolver {
+                    max_delta: delta.0,
+                    min_delta: delta.1.unwrap_or(0.1 * delta.0),
+                    stepper,
+                    n_substeps_guess: self.step,
+                }
+                .solve(
+                    initial_state,
+                    system,
+                    measurement,
+                    self.n,
+                    self.dt * self.step as f64,
+                );
+            }
             FixedStepSolver {
                 stepper,
                 n_substeps: self.step,
