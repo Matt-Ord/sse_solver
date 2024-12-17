@@ -1,5 +1,4 @@
 use ndarray::Array1;
-use ndarray_linalg::Scalar;
 use num_complex::Complex;
 
 use rand::Rng;
