@@ -8,7 +8,7 @@ use sse_solver::sparse::PlannedSplitScatteringArray;
 use sse_solver::{
     solvers::{
         EulerSolver, MilstenSolver, NormalizedSolver, Order2ExplicitWeakR5Solver,
-        Order2ExplicitWeakSolverRedux, Solver,
+        Order2ExplicitWeakSolver, Solver,
     },
     sparse::{BandedArray, SplitScatteringArray},
     system::sse::{FullNoise, SSESystem},
@@ -172,7 +172,7 @@ impl SimulationConfig {
                 );
                 panic!()
             }
-            (1, SSEMethod::Order2ExplicitWeak) => Order2ExplicitWeakSolverRedux {}.solve(
+            (1, SSEMethod::Order2ExplicitWeak) => Order2ExplicitWeakSolver {}.solve(
                 initial_state,
                 system,
                 measurement,
@@ -183,7 +183,7 @@ impl SimulationConfig {
             (n_realizations, SSEMethod::Order2ExplicitWeak) => {
                 #[cfg(feature = "localized")]
                 return LocalizedSolver {
-                    solver: Order2ExplicitWeakSolverRedux {},
+                    solver: Order2ExplicitWeakSolver {},
                     n_realizations,
                 }
                 .solve(
@@ -197,7 +197,7 @@ impl SimulationConfig {
                 panic!()
             }
             (1, SSEMethod::NormalizedOrder2ExplicitWeak) => {
-                NormalizedSolver(Order2ExplicitWeakSolverRedux {}).solve(
+                NormalizedSolver(Order2ExplicitWeakSolver {}).solve(
                     initial_state,
                     system,
                     measurement,
@@ -209,7 +209,7 @@ impl SimulationConfig {
             (n_realizations, SSEMethod::NormalizedOrder2ExplicitWeak) => {
                 #[cfg(feature = "localized")]
                 return LocalizedSolver {
-                    solver: NormalizedSolver(Order2ExplicitWeakSolverRedux {}),
+                    solver: NormalizedSolver(Order2ExplicitWeakSolver {}),
                     n_realizations,
                 }
                 .solve(
