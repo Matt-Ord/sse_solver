@@ -149,7 +149,7 @@ impl ExplicitWeakR5Solver {
 }
 
 struct Increment<'a> {
-    i_noise: &'a Vec<Complex<f64>>,
+    i_hat_noise: &'a Vec<Complex<f64>>,
     i_bar_noise: &'a Vec<Complex<f64>>,
     dt: f64,
     sqrt_dt: f64,
@@ -157,11 +157,11 @@ struct Increment<'a> {
 
 impl<'a> Increment<'a> {
     fn n_incoherent(&self) -> usize {
-        self.i_noise.len()
+        self.i_hat_noise.len()
     }
 
     fn i_bar_pair_noise(&self, i: usize, j: usize) -> Complex<f64> {
-        let product = self.i_bar_noise[i] * self.i_bar_noise[j];
+        let product = self.i_hat_noise[i] * self.i_hat_noise[j];
         if i == j {
             return 0.5 * (product - self.dt);
         }
@@ -198,7 +198,7 @@ impl ExplicitWeakR5Solver {
         for (i, step) in incoherent_steps.into_iter().enumerate() {
             if Self::B0[N][i] != 0.0 {
                 step.iter()
-                    .zip(increment.i_noise)
+                    .zip(increment.i_hat_noise)
                     .for_each(|(b, i_hat)| out += &((Self::B0[N][i] * i_hat) * b));
             }
         }
@@ -302,7 +302,7 @@ impl Solver for ExplicitWeakR5Solver {
         let increment = Increment {
             dt,
             i_bar_noise: &i_bar,
-            i_noise: &i_hat,
+            i_hat_noise: &i_hat,
             sqrt_dt: dt.sqrt(),
         };
 
@@ -389,7 +389,7 @@ impl Solver for ExplicitWeakR5Solver {
             .zip(i_hat.iter())
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA1[0] * i_hat_k)
-                    + ((0.5 * Self::BETA2[0] / increment.sqrt_dt) * (i_hat_k.abs().square() - dt));
+                    + ((0.5 * Self::BETA2[0] / increment.sqrt_dt) * ((i_hat_k * i_hat_k) - dt));
                 out += &(factor * b_k);
             });
 
@@ -398,7 +398,7 @@ impl Solver for ExplicitWeakR5Solver {
             .zip(i_hat.iter())
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA1[1] * i_hat_k)
-                    + ((Self::BETA2[1] / increment.sqrt_dt) * (i_hat_k.abs().square() - dt));
+                    + ((Self::BETA2[1] / increment.sqrt_dt) * ((i_hat_k * i_hat_k) - dt));
                 out += &(factor * b_k);
             });
 
@@ -420,7 +420,7 @@ impl Solver for ExplicitWeakR5Solver {
             .zip(i_hat.iter())
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA1[2] * i_hat_k)
-                    + ((0.5 * Self::BETA2[2] / increment.sqrt_dt) * (i_hat_k.abs().square() - dt));
+                    + ((0.5 * Self::BETA2[2] / increment.sqrt_dt) * ((i_hat_k * i_hat_k) - dt));
                 out += &(factor * b_k);
             });
 
