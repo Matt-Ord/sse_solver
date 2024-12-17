@@ -39,10 +39,10 @@ def solve_sse_split_operator(
 
 
 __all__ = [
-    "SimulationConfig",
+    "BandedData",
     "SSEMethod",
+    "SimulationConfig",
+    "SplitOperatorData",
     "solve_sse",
     "solve_sse_banded",
-    "SplitOperatorData",
-    "BandedData",
 ]
