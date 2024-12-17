@@ -126,6 +126,7 @@ impl<S: Stepper> Solver for DynamicStep<S> {
         let mut step_dt = dt / self.n_substeps_guess as f64;
         let mut out = state.clone();
         let mut res_dt = dt;
+        let target_delta = 0.5 * (self.min_delta + self.max_delta);
 
         while res_dt > step_dt {
             let step = self.stepper.step(&out, system, *current_t, step_dt);
@@ -141,7 +142,6 @@ impl<S: Stepper> Solver for DynamicStep<S> {
                 res_dt -= step_dt;
             }
 
-            let target_delta = 0.5 * (self.min_delta + self.max_delta);
             step_dt *= target_delta / current_delta;
         }
 
