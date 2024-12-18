@@ -54,15 +54,41 @@ pub trait Stepper {
 }
 
 pub trait Solver {
+    #[allow(clippy::cast_precision_loss)]
+    fn solve<T: SDESystem, M: Measurement>(
+        &self,
+        initial_state: &Array1<Complex<f64>>,
+        system: &T,
+        measurement: &M,
+        n: usize,
+        dt: f64,
+    ) -> Vec<M::Out>;
+}
+
+pub struct FixedStep<S> {
+    pub stepper: S,
+    pub n_substeps: usize,
+}
+
+impl<S: Stepper> FixedStep<S> {
     fn integrate<T: SDESystem>(
         &self,
         state: &Array1<Complex<f64>>,
         system: &T,
         current_t: &mut f64,
         dt: f64,
-    ) -> Array1<Complex<f64>>;
-
-    #[allow(clippy::cast_precision_loss)]
+    ) -> Array1<Complex<f64>> {
+        #[allow(clippy::cast_precision_loss)]
+        let step_dt = dt / self.n_substeps as f64;
+        let mut out = state.clone();
+        for _n in 0..self.n_substeps {
+            out += &self.stepper.step(&out, system, *current_t, step_dt);
+            *current_t += step_dt;
+        }
+        out
+    }
+}
+impl<S: Stepper> Solver for FixedStep<S> {
     fn solve<T: SDESystem, M: Measurement>(
         &self,
         initial_state: &Array1<Complex<f64>>,
@@ -84,30 +110,6 @@ pub trait Solver {
     }
 }
 
-pub struct FixedStep<S> {
-    pub stepper: S,
-    pub n_substeps: usize,
-}
-
-impl<S: Stepper> Solver for FixedStep<S> {
-    fn integrate<T: SDESystem>(
-        &self,
-        state: &Array1<Complex<f64>>,
-        system: &T,
-        current_t: &mut f64,
-        dt: f64,
-    ) -> Array1<Complex<f64>> {
-        #[allow(clippy::cast_precision_loss)]
-        let step_dt = dt / self.n_substeps as f64;
-        let mut out = state.clone();
-        for _n in 0..self.n_substeps {
-            out += &self.stepper.step(&out, system, *current_t, step_dt);
-            *current_t += step_dt;
-        }
-        out
-    }
-}
-
 pub struct DynamicStep<S> {
     pub stepper: S,
     pub min_delta: Option<f64>,
@@ -116,35 +118,62 @@ pub struct DynamicStep<S> {
     pub n_substeps_guess: usize,
 }
 
-impl<S: Stepper> Solver for DynamicStep<S> {
-    fn integrate<T: SDESystem>(
+impl<S> DynamicStep<S> {
+    fn get_initial_dt(
         &self,
-        state: &Array1<Complex<f64>>,
-        system: &T,
-        current_t: &mut f64,
+        initial_state: &Array1<Complex<f64>>,
+        system: &impl SDESystem,
+        current_t: f64,
         dt: f64,
-    ) -> Array1<Complex<f64>> {
+    ) -> f64 {
         #[allow(clippy::cast_precision_loss)]
-        let mut step_dt = dt / self.n_substeps_guess as f64;
-        let mut out = state.clone();
-        let mut res_dt = dt;
+        let step_dt_guess = dt / self.n_substeps_guess as f64;
 
-        while res_dt > step_dt {
-            let step = self.stepper.step(&out, system, *current_t, step_dt);
+        let step = system.get_coherent_step(step_dt_guess.into(), initial_state, current_t);
+        let current_delta = step.norm_l2();
+        step_dt_guess * self.target_delta / current_delta
+    }
+}
+impl<S: Stepper> Solver for DynamicStep<S> {
+    fn solve<T: SDESystem, M: Measurement>(
+        &self,
+        initial_state: &Array1<Complex<f64>>,
+        system: &T,
+        measurement: &M,
+        n: usize,
+        dt: f64,
+    ) -> Vec<M::Out> {
+        let mut out = Vec::with_capacity(n);
+        let mut current = initial_state.to_owned();
+        let mut current_t = 0f64;
 
-            let current_delta = step.norm_l2();
-            if (self.min_delta.is_none_or(|d| d < current_delta))
-                && self.max_delta.is_none_or(|d| current_delta < d)
-            {
-                out += &step;
-                *current_t += step_dt;
-                res_dt -= step_dt;
+        let mut step_dt = self.get_initial_dt(initial_state, system, current_t, dt);
+
+        for _step_n in 1..n {
+            out.push(measurement.measure(&current));
+
+            let mut res_dt = dt;
+            while res_dt > step_dt {
+                let step = self.stepper.step(&current, system, current_t, step_dt);
+
+                let current_delta = step.norm_l2();
+                if (self.min_delta.is_none_or(|d| d < current_delta))
+                    && self.max_delta.is_none_or(|d| current_delta < d)
+                {
+                    current += &step;
+                    current_t += step_dt;
+                    res_dt -= step_dt;
+                }
+
+                // Adjust the step size - note we don't modify the time step all of the
+                // way to the target delta, as the increments are stochastic
+                step_dt *= 0.8 + (0.2 * self.target_delta / current_delta);
             }
-
-            step_dt *= self.target_delta / current_delta;
+            current += &self.stepper.step(&current, system, current_t, res_dt);
+            current_t += res_dt;
         }
+        out.push(measurement.measure(&current));
 
-        out += &self.stepper.step(&out, system, *current_t, res_dt);
         out
     }
 }
