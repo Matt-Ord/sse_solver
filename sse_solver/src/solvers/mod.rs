@@ -16,7 +16,7 @@ pub use order_2::{
 pub mod solver;
 pub use solver::{
     DynamicStep as DynamicStepSolver, FixedStep as FixedStepSolver, Measurement,
-    OperatorMeasurement, Solver, StateMeasurement, Stepper,
+    NormalizedStateMeasurement, OperatorMeasurement, Solver, StateMeasurement, Stepper,
 };
 #[cfg(feature = "localized")]
 pub mod localized;

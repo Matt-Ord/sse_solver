@@ -18,6 +18,15 @@ impl Measurement for StateMeasurement {
     }
 }
 
+pub struct NormalizedStateMeasurement {}
+
+impl Measurement for NormalizedStateMeasurement {
+    type Out = Array1<Complex<f64>>;
+    fn measure(&self, state: &Array1<Complex<f64>>) -> Self::Out {
+        state / state.norm_l2()
+    }
+}
+
 pub struct OperatorMeasurement<T> {
     pub operator: T,
 }
@@ -60,14 +69,13 @@ pub trait Solver {
         initial_state: &Array1<Complex<f64>>,
         system: &T,
         measurement: &M,
-        n: usize,
-        dt: f64,
+        times: &[f64],
     ) -> Vec<M::Out>;
 }
 
 pub struct FixedStep<S> {
     pub stepper: S,
-    pub n_substeps: usize,
+    pub target_dt: f64,
 }
 
 impl<S: Stepper> FixedStep<S> {
@@ -76,14 +84,18 @@ impl<S: Stepper> FixedStep<S> {
         state: &Array1<Complex<f64>>,
         system: &T,
         current_t: &mut f64,
-        dt: f64,
+        end_t: f64,
     ) -> Array1<Complex<f64>> {
-        #[allow(clippy::cast_precision_loss)]
-        let step_dt = dt / self.n_substeps as f64;
+        let delta_t = end_t - *current_t;
+        let n_substeps = (delta_t / self.target_dt).ceil();
+        let dt = delta_t / n_substeps;
+        #[allow(clippy::cast_possible_truncation)]
+        let n_substeps = n_substeps as i64;
+
         let mut out = state.clone();
-        for _n in 0..self.n_substeps {
-            out += &self.stepper.step(&out, system, *current_t, step_dt);
-            *current_t += step_dt;
+        for _n in 0..n_substeps {
+            out += &self.stepper.step(&out, system, *current_t, dt);
+            *current_t += dt;
         }
         out
     }
@@ -94,17 +106,15 @@ impl<S: Stepper> Solver for FixedStep<S> {
         initial_state: &Array1<Complex<f64>>,
         system: &T,
         measurement: &M,
-        n: usize,
-        dt: f64,
+        times: &[f64],
     ) -> Vec<M::Out> {
-        let mut out = Vec::with_capacity(n);
+        let mut out = Vec::with_capacity(times.len());
         let mut current = initial_state.to_owned();
         let mut current_t = 0f64;
-        for _step_n in 1..n {
+        for t in times {
+            current = self.integrate(&current, system, &mut current_t, *t);
             out.push(measurement.measure(&current));
-            current = self.integrate(&current, system, &mut current_t, dt);
         }
-        out.push(measurement.measure(&current));
 
         out
     }
@@ -115,7 +125,7 @@ pub struct DynamicStep<S> {
     pub min_delta: Option<f64>,
     pub max_delta: Option<f64>,
     pub target_delta: f64,
-    pub n_substeps_guess: usize,
+    pub dt_guess: f64,
 }
 
 impl<S> DynamicStep<S> {
@@ -124,10 +134,9 @@ impl<S> DynamicStep<S> {
         initial_state: &Array1<Complex<f64>>,
         system: &impl SDESystem,
         current_t: f64,
-        dt: f64,
     ) -> f64 {
         #[allow(clippy::cast_precision_loss)]
-        let step_dt_guess = dt / self.n_substeps_guess as f64;
+        let step_dt_guess = self.dt_guess;
 
         let step = system.get_coherent_step(step_dt_guess.into(), initial_state, current_t);
         let current_delta = step.norm_l2();
@@ -140,19 +149,16 @@ impl<S: Stepper> Solver for DynamicStep<S> {
         initial_state: &Array1<Complex<f64>>,
         system: &T,
         measurement: &M,
-        n: usize,
-        dt: f64,
+        times: &[f64],
     ) -> Vec<M::Out> {
-        let mut out = Vec::with_capacity(n);
+        let mut out = Vec::with_capacity(times.len());
         let mut current = initial_state.to_owned();
         let mut current_t = 0f64;
 
-        let mut step_dt = self.get_initial_dt(initial_state, system, current_t, dt);
+        let mut step_dt = self.get_initial_dt(initial_state, system, current_t);
 
-        for _step_n in 1..n {
-            out.push(measurement.measure(&current));
-
-            let mut res_dt = dt;
+        for t in times {
+            let mut res_dt = t - current_t;
             while res_dt > step_dt {
                 let step = self.stepper.step(&current, system, current_t, step_dt);
 
@@ -176,6 +182,8 @@ impl<S: Stepper> Solver for DynamicStep<S> {
             }
             current += &self.stepper.step(&current, system, current_t, res_dt);
             current_t += res_dt;
+
+            out.push(measurement.measure(&current));
         }
         out.push(measurement.measure(&current));
 

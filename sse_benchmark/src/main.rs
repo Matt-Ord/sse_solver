@@ -37,15 +37,17 @@ fn euler_solver_benchmark() {
 
     let noise = FullNoise::from_bra_ket(amplitudes.into(), &noise_vectors, &noise_vectors);
     let system = SSESystem { noise, hamiltonian };
-    let n = 1000;
-    let step = 1000;
-    let dt = 0.1;
     test::black_box(
         FixedStepSolver {
-            n_substeps: step,
+            target_dt: 1e-4,
             stepper: EulerStepper {},
         }
-        .solve(&initial_state, &system, &StateMeasurement {}, n, dt),
+        .solve(
+            &initial_state,
+            &system,
+            &StateMeasurement {},
+            &(0..1000).map(|i| 0.1 * f64::from(i)).collect::<Vec<_>>(),
+        ),
     );
 }
 #[allow(dead_code)]
@@ -67,15 +69,18 @@ fn euler_solver_benchmark_full() {
 
     let noise = FullNoise::from_operators(&noise_vectors);
     let system = SSESystem { noise, hamiltonian };
-    let n = 100;
-    let step = 4000;
-    let dt = 0.4;
+
     test::black_box(
         FixedStepSolver {
-            n_substeps: step,
+            target_dt: 1e-4,
             stepper: EulerStepper {},
         }
-        .solve(&initial_state, &system, &StateMeasurement {}, n, dt),
+        .solve(
+            &initial_state,
+            &system,
+            &StateMeasurement {},
+            &(0..100).map(|i| 0.4 * f64::from(i)).collect::<Vec<_>>(),
+        ),
     );
 }
 
@@ -113,15 +118,19 @@ fn euler_solver_benchmark_sparse() {
     );
     let system = SSESystem { noise, hamiltonian };
 
-    let n = 800;
-    let step = 8000;
-    let dt = 8000.0 * 1.25e-17;
     test::black_box(
         FixedStepSolver {
-            n_substeps: step,
+            target_dt: 1.25e-17,
             stepper: EulerStepper {},
         }
-        .solve(&initial_state, &system, &StateMeasurement {}, n, dt),
+        .solve(
+            &initial_state,
+            &system,
+            &StateMeasurement {},
+            &(0..800)
+                .map(|i| 1.25e-17 * 8000.0 * f64::from(i))
+                .collect::<Vec<_>>(),
+        ),
     );
 }
 #[allow(dead_code)]
@@ -167,15 +176,17 @@ fn second_order_solver_benchmark_sparse() {
     );
     let system = SSESystem { noise, hamiltonian };
 
-    let n = 100;
-    let step = 20000;
-    let dt = 1.0 / 20000.0;
     test::black_box(
         FixedStepSolver {
-            n_substeps: step,
+            target_dt: 1.0 / 20000.0,
             stepper: Order2ExplicitWeakStepper {},
         }
-        .solve(&initial_state, &system, &StateMeasurement {}, n, dt),
+        .solve(
+            &initial_state,
+            &system,
+            &StateMeasurement {},
+            &(0..100).map(f64::from).collect::<Vec<_>>(),
+        ),
     );
 }
 

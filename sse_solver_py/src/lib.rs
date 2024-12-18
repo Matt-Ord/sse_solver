@@ -21,6 +21,8 @@ use sse_solver::{
 #[cfg(feature = "localized")]
 use sse_solver::solvers::LocalizedStepper;
 
+mod measurement;
+
 #[derive(Clone, Copy, Hash)]
 enum SSEMethod {
     Euler,
@@ -35,9 +37,7 @@ enum SSEMethod {
 #[pyclass]
 struct SimulationConfig {
     #[pyo3(get, set)]
-    n: usize,
-    #[pyo3(get, set)]
-    step: usize,
+    times: Vec<f64>,
     #[pyo3(get, set)]
     dt: f64,
     #[pyo3(get, set)]
@@ -52,10 +52,9 @@ struct SimulationConfig {
 #[pymethods]
 impl SimulationConfig {
     #[new]
-    #[pyo3(signature = (*, n, step, dt, delta=None, n_trajectories=1, method, n_realizations=1))]
+    #[pyo3(signature = (*, times, dt, delta=None, n_trajectories=1, method, n_realizations=1))]
     fn new(
-        n: usize,
-        step: usize,
+        times: Vec<f64>,
         dt: f64,
         delta: Option<(Option<f64>, f64, Option<f64>)>,
         n_trajectories: usize,
@@ -73,8 +72,7 @@ impl SimulationConfig {
             _ => panic!(),
         };
         SimulationConfig {
-            n,
-            step,
+            times,
             dt,
             delta,
             n_trajectories,
@@ -169,27 +167,15 @@ impl SimulationConfig {
                     target_delta: delta.1,
                     min_delta: delta.0,
                     stepper,
-                    n_substeps_guess: self.step,
+                    dt_guess: self.dt,
                 }
-                .solve(
-                    initial_state,
-                    system,
-                    measurement,
-                    self.n,
-                    self.dt * self.step as f64,
-                );
+                .solve(initial_state, system, measurement, &self.times);
             }
             FixedStepSolver {
                 stepper,
-                n_substeps: self.step,
+                target_dt: self.dt,
             }
-            .solve(
-                initial_state,
-                system,
-                measurement,
-                self.n,
-                self.dt * self.step as f64,
-            )
+            .solve(initial_state, system, measurement, &self.times)
         } else {
             #[cfg(feature = "localized")]
             return LocalizedStepper {
@@ -499,5 +485,6 @@ fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<SimulationConfig>()?;
     m.add_class::<BandedData>()?;
     m.add_class::<SplitOperatorData>()?;
+
     Ok(())
 }
