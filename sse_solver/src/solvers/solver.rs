@@ -91,8 +91,12 @@ impl<S: Stepper> FixedStep<S> {
         let dt = delta_t / n_substeps;
         #[allow(clippy::cast_possible_truncation)]
         let n_substeps = n_substeps as i64;
-
         let mut out = state.clone();
+
+        if delta_t < 1e-3 * self.target_dt {
+            return out;
+        }
+
         for _n in 0..n_substeps {
             out += &self.stepper.step(&out, system, *current_t, dt);
             *current_t += dt;
@@ -180,8 +184,10 @@ impl<S: Stepper> Solver for DynamicStep<S> {
                     optimal_dt
                 };
             }
-            current += &self.stepper.step(&current, system, current_t, res_dt);
-            current_t += res_dt;
+            if res_dt > step_dt * 1e-3 {
+                current += &self.stepper.step(&current, system, current_t, res_dt);
+                current_t += res_dt;
+            }
 
             out.push(measurement.measure(&current));
         }
