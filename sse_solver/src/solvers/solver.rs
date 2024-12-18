@@ -185,7 +185,6 @@ impl<S: Stepper> Solver for DynamicStep<S> {
 
             out.push(measurement.measure(&current));
         }
-        out.push(measurement.measure(&current));
 
         out
     }
