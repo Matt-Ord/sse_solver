@@ -21,8 +21,6 @@ use sse_solver::{
 #[cfg(feature = "localized")]
 use sse_solver::solvers::LocalizedStepper;
 
-mod measurement;
-
 #[derive(Clone, Copy, Hash)]
 enum SSEMethod {
     Euler,
