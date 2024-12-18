@@ -32,8 +32,7 @@ class SimulationConfig:
     def __init__[_A: float | None, _B: float | None](  # noqa: PLR0913
         self: SimulationConfig,
         *,
-        n: int,
-        step: int,
+        times: list[float],
         dt: float,
         delta: tuple[_A, float, _B] | None = None,
         n_trajectories: int = 1,

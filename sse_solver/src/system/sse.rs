@@ -469,25 +469,23 @@ mod test {
         let dt = 1f64;
         let diagonal_result = FixedStepSolver {
             stepper: EulerStepper {},
-            n_substeps: 10,
+            target_dt: 0.1f64,
         }
         .solve(
             &initial_state,
             &diagonal_system,
             &StateMeasurement {},
-            n_out,
-            dt,
+            &(0..30).map(|d| f64::from(d) * dt).collect::<Vec<_>>(),
         );
         let result_full = FixedStepSolver {
             stepper: EulerStepper {},
-            n_substeps: 10,
+            target_dt: 0.1f64,
         }
         .solve(
             &initial_state,
             &full_system,
             &StateMeasurement {},
-            n_out,
-            dt,
+            &(0..30).map(|d| f64::from(d) * dt).collect::<Vec<_>>(),
         );
 
         for i in 0..n_out {

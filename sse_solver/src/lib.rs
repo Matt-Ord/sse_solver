@@ -98,10 +98,10 @@ mod tests {
         let initial_state = get_initial_state(n_states);
 
         let result = FixedStepSolver {
-            n_substeps: 1,
+            target_dt: 1.0,
             stepper: EulerStepper {},
         }
-        .solve(&initial_state, &system, &StateMeasurement {}, 1, 1.0);
+        .solve(&initial_state, &system, &StateMeasurement {}, &[0.0]);
 
         assert_eq!(result[0], initial_state);
     }
@@ -111,12 +111,16 @@ mod tests {
         let system = get_diagonal_system(0, n_states);
         let initial_state = get_initial_state(n_states);
 
-        let n_out = 3;
         let result = FixedStepSolver {
-            n_substeps: 10,
+            target_dt: 1.0,
             stepper: EulerStepper {},
         }
-        .solve(&initial_state, &system, &StateMeasurement {}, n_out, 0.0);
+        .solve(
+            &initial_state,
+            &system,
+            &StateMeasurement {},
+            &[0.0, 0.0, 0.0],
+        );
 
         for res in result {
             assert_eq!(res, initial_state);
