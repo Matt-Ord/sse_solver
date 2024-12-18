@@ -168,8 +168,8 @@ impl<S: Stepper> Solver for DynamicStep<S> {
                 // Adjust the step size - note we are conservative about increasing the step size
                 // immediately to the target delta, as the increments are stochastic
                 let optimal_dt = step_dt * self.target_delta / current_delta;
-                step_dt *= if optimal_dt > step_dt {
-                    0.8 + (0.2 * optimal_dt)
+                step_dt = if optimal_dt > step_dt {
+                    (0.8 * step_dt) + (0.2 * optimal_dt)
                 } else {
                     optimal_dt
                 };
