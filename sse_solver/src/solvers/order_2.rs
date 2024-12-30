@@ -1,4 +1,5 @@
 use ndarray::Array1;
+use ndarray_linalg::Norm;
 use num_complex::Complex;
 
 use rand::Rng;
@@ -9,7 +10,7 @@ use crate::{
     system::{SDEStep, SDESystem},
 };
 
-use super::Stepper;
+use super::solver::DynamicStepper;
 
 /// The Order 2 General Weak Taylor Scheme defined in 5.1 of
 /// <https://www.jstor.org/stable/27862707>
@@ -18,14 +19,14 @@ use super::Stepper;
 /// to the other methods discussed in the paper
 pub struct ExplicitWeakStepper {}
 
-impl Stepper for ExplicitWeakStepper {
+impl DynamicStepper for ExplicitWeakStepper {
     fn step<T: SDESystem>(
         &self,
         state: &Array1<Complex<f64>>,
         system: &T,
         t: f64,
         dt: f64,
-    ) -> Array1<Complex<f64>> {
+    ) -> (Array1<Complex<f64>>, f64) {
         let mut rng = rand::thread_rng();
         // Sample the V distribution
         let dv = &rng.sample(VDistribution {
@@ -104,7 +105,17 @@ impl Stepper for ExplicitWeakStepper {
                 }
             }
         }
-        step
+
+        let euler_step = T::get_step_from_parts(
+            &parts,
+            &SDEStep {
+                coherent: Complex { re: dt, im: 0.0 },
+                incoherent: dw,
+            },
+        );
+        let error = (&step - euler_step).norm_l2();
+
+        (step, error)
     }
 }
 
@@ -273,7 +284,7 @@ impl ExplicitWeakR5Stepper {
     }
 }
 
-impl Stepper for ExplicitWeakR5Stepper {
+impl DynamicStepper for ExplicitWeakR5Stepper {
     #[allow(clippy::too_many_lines, clippy::similar_names)]
     fn step<T: SDESystem>(
         &self,
@@ -281,7 +292,7 @@ impl Stepper for ExplicitWeakR5Stepper {
         system: &T,
         t: f64,
         dt: f64,
-    ) -> Array1<Complex<f64>> {
+    ) -> (Array1<Complex<f64>>, f64) {
         let increment = Increment::new(system.n_incoherent(), dt);
 
         let h_00 = &Self::get_h_0_state::<0>(state, [], [], &increment);
@@ -346,7 +357,7 @@ impl Stepper for ExplicitWeakR5Stepper {
             &system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, &h_02, t + (Self::C0[2] * dt));
 
         // Y_(n+1) = Y_(n) + \sum_i alpha_i a(t_n+c_i^0h_n, H_i^0)h_n
-        let mut out = &(h_00_coherent * (Self::ALPHA[0] * dt))
+        let mut step = &(h_00_coherent * (Self::ALPHA[0] * dt))
             + &(h_01_coherent * (Self::ALPHA[1] * dt))
             + &(h_02_coherent * (Self::ALPHA[2] * dt));
 
@@ -357,7 +368,7 @@ impl Stepper for ExplicitWeakR5Stepper {
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA1[0] * i_hat_k)
                     + ((0.5 * Self::BETA2[0] / increment.sqrt_dt) * ((i_hat_k * i_hat_k) - dt));
-                out += &(b_k * factor);
+                step += &(b_k * factor);
             });
 
         h_k1_incoherent
@@ -366,7 +377,7 @@ impl Stepper for ExplicitWeakR5Stepper {
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA1[1] * i_hat_k)
                     + ((0.5 * Self::BETA2[1] / increment.sqrt_dt) * ((i_hat_k * i_hat_k) - dt));
-                out += &(b_k * factor);
+                step += &(b_k * factor);
             });
 
         let h_k2_incoherent = h_k2
@@ -387,7 +398,7 @@ impl Stepper for ExplicitWeakR5Stepper {
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA1[2] * i_hat_k)
                     + ((0.5 * Self::BETA2[2] / increment.sqrt_dt) * ((i_hat_k * i_hat_k) - dt));
-                out += &(b_k * factor);
+                step += &(b_k * factor);
             });
 
         let h_hat_k0_incoherent = (0..increment.n_incoherent()).map(|idx| {
@@ -404,7 +415,7 @@ impl Stepper for ExplicitWeakR5Stepper {
             .zip(&increment.i_hat_noise)
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA3[0] * i_hat_k) + (Self::BETA4[0] * increment.sqrt_dt);
-                out += &(b_k * factor);
+                step += &(b_k * factor);
             });
 
         let h_hat_k1_incoherent = h_hat_k1.enumerate().map(|(idx, s)| {
@@ -420,7 +431,7 @@ impl Stepper for ExplicitWeakR5Stepper {
             .zip(&increment.i_hat_noise)
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA3[1] * i_hat_k) + (Self::BETA4[1] * increment.sqrt_dt);
-                out += &(b_k * factor);
+                step += &(b_k * factor);
             });
 
         let h_hat_k2_incoherent = h_hat_k2.enumerate().map(|(idx, s)| {
@@ -436,8 +447,23 @@ impl Stepper for ExplicitWeakR5Stepper {
             .zip(&increment.i_hat_noise)
             .for_each(|(b_k, i_hat_k)| {
                 let factor = (Self::BETA3[2] * i_hat_k) + (Self::BETA4[2] * increment.sqrt_dt);
-                out += &(b_k * factor);
+                step += &(b_k * factor);
             });
-        out
+
+        let euler_step = system.get_step(
+            &SDEStep {
+                coherent: Complex { re: dt, im: 0.0 },
+                incoherent: &increment
+                    .i_hat_noise
+                    .into_iter()
+                    .map(|i| Complex { re: i, im: 0.0 })
+                    .collect(),
+            },
+            state,
+            t,
+        );
+        let error = (&step - euler_step).norm_l2();
+
+        (step, error)
     }
 }

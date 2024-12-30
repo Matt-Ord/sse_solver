@@ -52,6 +52,7 @@ impl<M0: Measurement, M1: Measurement> Measurement for (M0, M1) {
         (self.0.measure(state), self.1.measure(state))
     }
 }
+
 pub trait Stepper {
     fn step<T: SDESystem>(
         &self,
@@ -60,6 +61,28 @@ pub trait Stepper {
         t: f64,
         dt: f64,
     ) -> Array1<Complex<f64>>;
+}
+
+pub trait DynamicStepper {
+    fn step<T: SDESystem>(
+        &self,
+        state: &Array1<Complex<f64>>,
+        system: &T,
+        t: f64,
+        dt: f64,
+    ) -> (Array1<Complex<f64>>, f64);
+}
+
+impl<S: DynamicStepper> Stepper for S {
+    fn step<T: SDESystem>(
+        &self,
+        state: &Array1<Complex<f64>>,
+        system: &T,
+        t: f64,
+        dt: f64,
+    ) -> Array1<Complex<f64>> {
+        self.step(state, system, t, dt).0
+    }
 }
 
 pub trait Solver {
@@ -147,6 +170,7 @@ impl<S> DynamicStep<S> {
         step_dt_guess * self.target_delta / current_delta
     }
 }
+
 impl<S: Stepper> Solver for DynamicStep<S> {
     fn solve<T: SDESystem, M: Measurement>(
         &self,
@@ -178,14 +202,82 @@ impl<S: Stepper> Solver for DynamicStep<S> {
                 // Adjust the step size - note we are conservative about increasing the step size
                 // immediately to the target delta, as the increments are stochastic
                 let optimal_dt = step_dt * self.target_delta / current_delta;
-                step_dt = if optimal_dt > step_dt {
-                    (0.5 * step_dt) + (0.5 * optimal_dt)
-                } else {
-                    optimal_dt
-                };
+                step_dt = 2.0 * step_dt * optimal_dt / (step_dt + optimal_dt);
             }
+            // Behaves poorly for really small time steps
+            // This should have a very small effect on the results
+            // if res_dt > step_dt * 1e-3 {
+            //     current += &self.stepper.step(&current, system, current_t, res_dt);
+            //     current_t += res_dt;
+            // }
+
+            out.push(measurement.measure(&current));
+        }
+
+        out
+    }
+}
+
+pub struct DynamicErrorStep<S> {
+    pub stepper: S,
+    pub min_error: Option<f64>,
+    pub max_error: Option<f64>,
+    pub target_error: f64,
+    pub dt_guess: f64,
+}
+
+impl<S: DynamicStepper> DynamicErrorStep<S> {
+    fn get_initial_dt(
+        &self,
+        initial_state: &Array1<Complex<f64>>,
+        system: &impl SDESystem,
+        current_t: f64,
+    ) -> f64 {
+        #[allow(clippy::cast_precision_loss)]
+        let step_dt_guess = self.dt_guess;
+
+        let (_, error) = self
+            .stepper
+            .step(initial_state, system, current_t, step_dt_guess);
+
+        step_dt_guess * self.target_error / error
+    }
+}
+impl<S: DynamicStepper> Solver for DynamicErrorStep<S> {
+    fn solve<T: SDESystem, M: Measurement>(
+        &self,
+        initial_state: &Array1<Complex<f64>>,
+        system: &T,
+        measurement: &M,
+        times: &[f64],
+    ) -> Vec<M::Out> {
+        let mut out = Vec::with_capacity(times.len());
+        let mut current = initial_state.to_owned();
+        let mut current_t = 0f64;
+
+        let mut step_dt = self.get_initial_dt(initial_state, system, current_t);
+
+        for t in times {
+            let mut res_dt = t - current_t;
+            while res_dt > step_dt {
+                let (step, error) = self.stepper.step(&current, system, current_t, step_dt);
+
+                if (self.min_error.is_none_or(|d| d < error))
+                    && self.max_error.is_none_or(|d| error < d)
+                {
+                    current += &step;
+                    current_t += step_dt;
+                    res_dt -= step_dt;
+                }
+
+                // Adjust the step size - note we are conservative about increasing the step size
+                // immediately to the target delta, as the increments are stochastic
+                step_dt *= self.target_error / error;
+            }
+            // Behaves poorly for really small time steps
+            // This should have a very small effect on the results
             if res_dt > step_dt * 1e-3 {
-                current += &self.stepper.step(&current, system, current_t, res_dt);
+                current += &self.stepper.step(&current, system, current_t, res_dt).0;
                 current_t += res_dt;
             }
 
