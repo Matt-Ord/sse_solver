@@ -15,8 +15,8 @@ pub use order_2::{
 
 pub mod solver;
 pub use solver::{
-    DynamicNormStepSolver as DynamicStepSolver, FixedStep as FixedStepSolver, Measurement,
-    NormalizedStateMeasurement, OperatorMeasurement, Solver, StateMeasurement, Stepper,
+    DynamicErrorStepSolver, FixedStep as FixedStepSolver, Measurement, NormalizedStateMeasurement,
+    OperatorMeasurement, Solver, StateMeasurement, Stepper,
 };
 #[cfg(feature = "localized")]
 pub mod localized;
@@ -33,13 +33,14 @@ impl<S: Stepper> Stepper for NormalizedStepper<S> {
         system: &T,
         t: f64,
         dt: f64,
-    ) -> Array1<Complex<f64>> {
-        let mut next = state + self.0.step(state, system, t, dt);
+    ) -> (Array1<Complex<f64>>, Option<f64>) {
+        let (step, err) = self.0.step(state, system, t, dt);
+        let mut next = state + step;
         // Normalize the state
         next /= Complex {
             re: next.norm_l2(),
             im: 0f64,
         };
-        next - state
+        (next - state, err)
     }
 }

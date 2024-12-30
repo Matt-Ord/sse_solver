@@ -60,29 +60,7 @@ pub trait Stepper {
         system: &T,
         t: f64,
         dt: f64,
-    ) -> Array1<Complex<f64>>;
-}
-
-pub trait DynamicStepper {
-    fn step<T: SDESystem>(
-        &self,
-        state: &Array1<Complex<f64>>,
-        system: &T,
-        t: f64,
-        dt: f64,
-    ) -> (Array1<Complex<f64>>, f64);
-}
-
-impl<S: DynamicStepper> Stepper for S {
-    fn step<T: SDESystem>(
-        &self,
-        state: &Array1<Complex<f64>>,
-        system: &T,
-        t: f64,
-        dt: f64,
-    ) -> Array1<Complex<f64>> {
-        self.step(state, system, t, dt).0
-    }
+    ) -> (Array1<Complex<f64>>, Option<f64>);
 }
 
 pub trait Solver {
@@ -121,7 +99,7 @@ impl<S: Stepper> FixedStep<S> {
         }
 
         for _n in 0..n_substeps {
-            out += &self.stepper.step(&out, system, *current_t, dt);
+            out += &self.stepper.step(&out, system, *current_t, dt).0;
             *current_t += dt;
         }
         out
@@ -147,77 +125,6 @@ impl<S: Stepper> Solver for FixedStep<S> {
     }
 }
 
-pub struct DynamicNormStepSolver<S> {
-    pub stepper: S,
-    pub min_delta: Option<f64>,
-    pub max_delta: Option<f64>,
-    pub target_delta: f64,
-    pub dt_guess: f64,
-}
-
-impl<S> DynamicNormStepSolver<S> {
-    fn get_initial_dt(
-        &self,
-        initial_state: &Array1<Complex<f64>>,
-        system: &impl SDESystem,
-        current_t: f64,
-    ) -> f64 {
-        #[allow(clippy::cast_precision_loss)]
-        let step_dt_guess = self.dt_guess;
-
-        let step = system.get_coherent_step(step_dt_guess.into(), initial_state, current_t);
-        let current_delta = step.norm_l2();
-        step_dt_guess * self.target_delta / current_delta
-    }
-}
-
-impl<S: Stepper> Solver for DynamicNormStepSolver<S> {
-    fn solve<T: SDESystem, M: Measurement>(
-        &self,
-        initial_state: &Array1<Complex<f64>>,
-        system: &T,
-        measurement: &M,
-        times: &[f64],
-    ) -> Vec<M::Out> {
-        let mut out = Vec::with_capacity(times.len());
-        let mut current = initial_state.to_owned();
-        let mut current_t = 0f64;
-
-        let mut step_dt = self.get_initial_dt(initial_state, system, current_t);
-
-        for t in times {
-            let mut res_dt = t - current_t;
-            while res_dt > step_dt {
-                let step = self.stepper.step(&current, system, current_t, step_dt);
-
-                let current_delta = step.norm_l2();
-                if (self.min_delta.is_none_or(|d| d < current_delta))
-                    && self.max_delta.is_none_or(|d| current_delta < d)
-                {
-                    current += &step;
-                    current_t += step_dt;
-                    res_dt -= step_dt;
-                }
-
-                // Adjust the step size - note we are conservative about increasing the step size
-                // immediately to the target delta, as the increments are stochastic
-                let optimal_dt = step_dt * self.target_delta / current_delta;
-                step_dt = 2.0 * step_dt * optimal_dt / (step_dt + optimal_dt);
-            }
-            // Behaves poorly for really small time steps
-            // This should have a very small effect on the results
-            // if res_dt > step_dt * 1e-3 {
-            //     current += &self.stepper.step(&current, system, current_t, res_dt);
-            //     current_t += res_dt;
-            // }
-
-            out.push(measurement.measure(&current));
-        }
-
-        out
-    }
-}
-
 pub struct DynamicErrorStepSolver<S> {
     pub stepper: S,
     pub min_error: Option<f64>,
@@ -226,7 +133,7 @@ pub struct DynamicErrorStepSolver<S> {
     pub dt_guess: f64,
 }
 
-impl<S: DynamicStepper> DynamicErrorStepSolver<S> {
+impl<S: Stepper> DynamicErrorStepSolver<S> {
     fn get_initial_dt(
         &self,
         initial_state: &Array1<Complex<f64>>,
@@ -236,14 +143,15 @@ impl<S: DynamicStepper> DynamicErrorStepSolver<S> {
         #[allow(clippy::cast_precision_loss)]
         let step_dt_guess = self.dt_guess;
 
-        let (_, error) = self
+        let (step, error) = self
             .stepper
             .step(initial_state, system, current_t, step_dt_guess);
+        let current_delta = error.unwrap_or(step.norm_l2());
 
-        step_dt_guess * self.target_error / error
+        step_dt_guess * self.target_error / current_delta
     }
 }
-impl<S: DynamicStepper> Solver for DynamicErrorStepSolver<S> {
+impl<S: Stepper> Solver for DynamicErrorStepSolver<S> {
     fn solve<T: SDESystem, M: Measurement>(
         &self,
         initial_state: &Array1<Complex<f64>>,
@@ -262,8 +170,9 @@ impl<S: DynamicStepper> Solver for DynamicErrorStepSolver<S> {
             while res_dt > step_dt {
                 let (step, error) = self.stepper.step(&current, system, current_t, step_dt);
 
-                if (self.min_error.is_none_or(|d| d < error))
-                    && self.max_error.is_none_or(|d| error < d)
+                let current_delta = error.unwrap_or(step.norm_l2());
+                if (self.min_error.is_none_or(|d| d < current_delta))
+                    && self.max_error.is_none_or(|d| current_delta < d)
                 {
                     current += &step;
                     current_t += step_dt;
@@ -272,7 +181,7 @@ impl<S: DynamicStepper> Solver for DynamicErrorStepSolver<S> {
 
                 // Adjust the step size - note we are conservative about increasing the step size
                 // immediately to the target delta, as the increments are stochastic
-                step_dt *= self.target_error / error;
+                step_dt *= self.target_error / current_delta;
             }
             // Behaves poorly for really small time steps
             // This should have a very small effect on the results
