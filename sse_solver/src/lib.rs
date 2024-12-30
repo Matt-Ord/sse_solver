@@ -96,33 +96,39 @@ mod tests {
         let n_states = 10;
         let system = get_random_system(10, n_states);
         let initial_state = get_initial_state(n_states);
-
-        let result = FixedStepSolver {
-            target_dt: 1.0,
-            stepper: EulerStepper {},
-        }
-        .solve(&initial_state, &system, &StateMeasurement {}, &[0.0]);
-
-        assert_eq!(result[0], initial_state);
-    }
-    #[test]
-    fn test_zero_timestep() {
-        let n_states = 10;
-        let system = get_diagonal_system(0, n_states);
-        let initial_state = get_initial_state(n_states);
-
-        let result = FixedStepSolver {
+        let mut result = StateMeasurement::with_capacity(false, 30);
+        let _ = FixedStepSolver {
             target_dt: 1.0,
             stepper: EulerStepper {},
         }
         .solve(
             &initial_state,
             &system,
-            &StateMeasurement {},
+            &mut |state| result.measure(state),
+            &[0.0],
+        );
+
+        assert_eq!(result.measurements[0], initial_state);
+    }
+    #[test]
+    fn test_zero_timestep() {
+        let n_states = 10;
+        let system = get_diagonal_system(0, n_states);
+        let initial_state = get_initial_state(n_states);
+        let mut result = StateMeasurement::with_capacity(false, 30);
+
+        let _ = FixedStepSolver {
+            target_dt: 1.0,
+            stepper: EulerStepper {},
+        }
+        .solve(
+            &initial_state,
+            &system,
+            &mut |state| result.measure(state),
             &[0.0, 0.0, 0.0],
         );
 
-        for res in result {
+        for res in result.measurements {
             assert_eq!(res, initial_state);
         }
     }

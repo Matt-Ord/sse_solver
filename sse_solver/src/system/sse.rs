@@ -467,29 +467,34 @@ mod test {
 
         let n_out = 30;
         let dt = 1f64;
-        let diagonal_result = FixedStepSolver {
+        let mut diagonal_result = StateMeasurement::with_capacity(false, 30);
+        FixedStepSolver {
             stepper: EulerStepper {},
             target_dt: 0.1f64,
         }
         .solve(
             &initial_state,
             &diagonal_system,
-            &StateMeasurement {},
+            &mut |s| diagonal_result.measure(s),
             &(0..30).map(|d| f64::from(d) * dt).collect::<Vec<_>>(),
-        );
-        let result_full = FixedStepSolver {
+        )
+        .unwrap();
+        let mut result_full = StateMeasurement::with_capacity(false, 30);
+
+        FixedStepSolver {
             stepper: EulerStepper {},
             target_dt: 0.1f64,
         }
         .solve(
             &initial_state,
             &full_system,
-            &StateMeasurement {},
+            &mut |s| result_full.measure(s),
             &(0..30).map(|d| f64::from(d) * dt).collect::<Vec<_>>(),
-        );
+        )
+        .unwrap();
 
         for i in 0..n_out {
-            assert_eq!(result_full[i], diagonal_result[i]);
+            assert_eq!(result_full.measurements[i], diagonal_result.measurements[i]);
         }
     }
 }

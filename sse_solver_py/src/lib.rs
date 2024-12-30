@@ -1,11 +1,11 @@
 use std::thread;
 
+use measurement::SDEMeasurementCollection;
 use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex;
 use pyo3::{exceptions::PyAssertionError, prelude::*};
 use sse_solver::solvers::{
-    DynamicStepSolver, FixedStepSolver, Measurement, OperatorMeasurement, Solver, StateMeasurement,
-    Stepper,
+    DynamicStepSolver, FixedStepSolver, MeasurementError, Solver, StateMeasurement, Stepper,
 };
 use sse_solver::sparse::PlannedSplitScatteringArray;
 use sse_solver::{
@@ -18,9 +18,10 @@ use sse_solver::{
     system::SDESystem,
 };
 
+pub mod measurement;
+
 #[cfg(feature = "localized")]
 use sse_solver::solvers::LocalizedStepper;
-
 #[derive(Clone, Copy, Hash)]
 enum SSEMethod {
     Euler,
@@ -151,12 +152,12 @@ impl SimulationConfig {
             }
         }
     }
-    fn simulate_single_system<T: SDESystem, M: Measurement>(
+    fn simulate_single_system<T: SDESystem>(
         &self,
         initial_state: &Array1<Complex<f64>>,
         system: &T,
-        measurement: &M,
-    ) -> Vec<M::Out> {
+        measurement: &mut impl FnMut(&Array1<Complex<f64>>) -> Result<(), MeasurementError>,
+    ) -> Result<(), sse_solver::solvers::SolverError> {
         let stepper = self.get_stepper();
         if self.n_realizations == 1 {
             if let Some(delta) = self.delta {
@@ -191,23 +192,28 @@ impl SimulationConfig {
         }
     }
 
-    fn simulate_system<T: SDESystem + Sync, M: Measurement<Out: Send> + Sync>(
+    fn simulate_system<T: SDESystem + Sync, U: SDEMeasurementCollection + Send + Sync>(
         &self,
         initial_state: &Array1<Complex<f64>>,
         system: &T,
-        measurement: &M,
-    ) -> Vec<M::Out> {
+    ) -> Vec<U> {
         thread::scope(move |s| {
             let threads = (0..self.n_trajectories)
                 .map(|_| {
-                    s.spawn(move || self.simulate_single_system(initial_state, system, measurement))
+                    s.spawn(move || {
+                        let mut collection = U::with_capacity(self.times.len());
+                        self.simulate_single_system(initial_state, system, &mut |s| {
+                            collection.add_measurement(s)
+                        });
+                        collection
+                    })
                 })
                 .collect::<Vec<_>>();
 
             threads
                 .into_iter()
-                .flat_map(|t| t.join().unwrap().into_iter())
-                .collect::<Vec<_>>()
+                .map(|t| t.join().unwrap())
+                .collect::<Vec<U>>()
         })
     }
 }
@@ -249,8 +255,14 @@ fn solve_sse(
     };
 
     let initial_state = Array1::from(initial_state);
+    let mut measurement = (0..config.n_trajectories)
+        .map(|d| StateMeasurement::with_capacity(false, config.times.len()))
+        .collect::<Vec<_>>();
+    let measurement: Vec<StateMeasurement> = config.simulate_system(&initial_state, &system);
     Ok(config
-        .simulate_system(&initial_state, &system, &StateMeasurement {})
+        .simulate_system(&initial_state, &system, &mut |i, state| {
+            measurement[*i].measure(state)
+        })
         .iter()
         .flat_map(|d| d.iter())
         .cloned()
@@ -312,9 +324,13 @@ fn solve_sse_banded(
     };
 
     let initial_state = Array1::from(initial_state);
-
+    let mut measurement = (0..config.n_trajectories)
+        .map(|d| StateMeasurement::with_capacity(false, config.times.len()))
+        .collect::<Vec<_>>();
     Ok(config
-        .simulate_system(&initial_state, &system, &StateMeasurement {})
+        .simulate_system(&initial_state, &system, &mut |i, state| {
+            measurement[*i].measure(state)
+        })
         .iter()
         .flat_map(|d| d.iter())
         .cloned()
@@ -358,14 +374,12 @@ impl From<SplitOperatorData> for SplitScatteringArray<Complex<f64>> {
     }
 }
 
-fn solve_sse_split_operator_for_measurement<
-    M: Sync + Measurement<Out: Send + IntoIterator<Item = Complex<f64>>>,
->(
+fn solve_sse_split_operator_for_measurement(
     initial_state: Vec<Complex<f64>>,
     hamiltonian: &SplitOperatorData,
     noise_operators: Vec<SplitOperatorData>,
     config: PyRef<SimulationConfig>,
-    measurement: &M,
+    measurement: &mut impl FnMut(&usize, &Array1<Complex<f64>>) -> Result<(), MeasurementError>,
 ) -> PyResult<Vec<Complex<f64>>> {
     assert!(hamiltonian.c.len() == initial_state.len());
     noise_operators
@@ -385,11 +399,7 @@ fn solve_sse_split_operator_for_measurement<
 
     let initial_state = Array1::from(initial_state);
 
-    Ok(config
-        .simulate_system(&initial_state, &system, measurement)
-        .into_iter()
-        .flat_map(|d| d.into_iter())
-        .collect())
+    config.simulate_system(&initial_state, &system, measurement)
 }
 
 #[pyfunction]
@@ -399,13 +409,25 @@ fn solve_sse_split_operator(
     noise_operators: Vec<SplitOperatorData>,
     config: PyRef<SimulationConfig>,
 ) -> PyResult<Vec<Complex<f64>>> {
+    let mut measurement = (0..config.n_trajectories)
+        .map(|_| StateMeasurement::with_capacity(false, config.times.len()))
+        .collect::<Vec<_>>();
     solve_sse_split_operator_for_measurement(
         initial_state,
         hamiltonian,
         noise_operators,
         config,
-        &StateMeasurement {},
+        &mut |i, state| measurement[*i].measure(state),
     )
+    .unwrap();
+    Ok(measurement
+        .into_iter()
+        .flat_map(|d| {
+            d.measurements
+                .into_iter()
+                .flat_map(|a| a.to_vec().into_iter())
+        })
+        .collect())
 }
 
 #[pyfunction]
@@ -464,11 +486,21 @@ fn solve_sse_bra_ket(
     };
 
     let initial_state = Array1::from(initial_state);
-    Ok(config
-        .simulate_system(&initial_state, &system, &StateMeasurement {})
-        .iter()
-        .flat_map(|d| d.iter())
-        .cloned()
+    let mut measurement = (0..config.n_trajectories)
+        .map(|_| StateMeasurement::with_capacity(false, config.times.len()))
+        .collect::<Vec<_>>();
+    config
+        .simulate_system(&initial_state, &system, &mut |i, state| {
+            measurement[*i].measure(state)
+        })
+        .unwrap();
+    Ok(measurement
+        .into_iter()
+        .flat_map(|d| {
+            d.measurements
+                .into_iter()
+                .flat_map(|a| a.to_vec().into_iter())
+        })
         .collect())
 }
 
