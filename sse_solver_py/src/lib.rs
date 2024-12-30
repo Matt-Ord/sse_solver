@@ -3,7 +3,7 @@ use std::thread;
 use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex;
 use pyo3::{exceptions::PyAssertionError, prelude::*};
-use sse_solver::solvers::solver::{DynamicErrorStep, DynamicStepper};
+use sse_solver::solvers::solver::{DynamicErrorStepSolver, DynamicNormStepSolver, DynamicStepper};
 use sse_solver::solvers::{
     FixedStepSolver, Measurement, OperatorMeasurement, Solver, StateMeasurement, Stepper,
 };
@@ -158,10 +158,10 @@ impl SimulationConfig {
         let stepper = self.get_stepper();
         if self.n_realizations == 1 {
             if let Some(delta) = self.delta {
-                return DynamicErrorStep {
-                    max_error: delta.2,
-                    target_error: delta.1,
-                    min_error: delta.0,
+                return DynamicNormStepSolver {
+                    max_delta: delta.2,
+                    target_delta: delta.1,
+                    min_delta: delta.0,
                     stepper,
                     dt_guess: self.dt,
                 }

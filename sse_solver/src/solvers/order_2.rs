@@ -42,16 +42,15 @@ impl DynamicStepper for ExplicitWeakStepper {
             .collect::<Vec<_>>();
 
         let parts = system.get_parts(state, t);
-
+        let euler_step = T::get_step_from_parts(
+            &parts,
+            &SDEStep {
+                coherent: Complex { re: dt, im: 0.0 },
+                incoherent: dw,
+            },
+        );
         // H_0 = Y_n + a(Y_n) dt + \sum_j b^j w_j
-        let h0 = state
-            + T::get_step_from_parts(
-                &parts,
-                &SDEStep {
-                    coherent: Complex { re: dt, im: 0f64 },
-                    incoherent: dw,
-                },
-            );
+        let h0 = state + &euler_step;
 
         let operators = T::get_operators_from_parts(&parts);
 
@@ -106,14 +105,7 @@ impl DynamicStepper for ExplicitWeakStepper {
             }
         }
 
-        let euler_step = T::get_step_from_parts(
-            &parts,
-            &SDEStep {
-                coherent: Complex { re: dt, im: 0.0 },
-                incoherent: dw,
-            },
-        );
-        let error = (&step - euler_step).norm_l2();
+        let error = (&step - euler_step).norm_max();
 
         (step, error)
     }
