@@ -147,7 +147,7 @@ impl<S: Stepper> Solver for FixedStep<S> {
     }
 }
 
-pub struct DynamicStep<S> {
+pub struct DynamicNormStepSolver<S> {
     pub stepper: S,
     pub min_delta: Option<f64>,
     pub max_delta: Option<f64>,
@@ -155,7 +155,7 @@ pub struct DynamicStep<S> {
     pub dt_guess: f64,
 }
 
-impl<S> DynamicStep<S> {
+impl<S> DynamicNormStepSolver<S> {
     fn get_initial_dt(
         &self,
         initial_state: &Array1<Complex<f64>>,
@@ -171,7 +171,7 @@ impl<S> DynamicStep<S> {
     }
 }
 
-impl<S: Stepper> Solver for DynamicStep<S> {
+impl<S: Stepper> Solver for DynamicNormStepSolver<S> {
     fn solve<T: SDESystem, M: Measurement>(
         &self,
         initial_state: &Array1<Complex<f64>>,
@@ -218,7 +218,7 @@ impl<S: Stepper> Solver for DynamicStep<S> {
     }
 }
 
-pub struct DynamicErrorStep<S> {
+pub struct DynamicErrorStepSolver<S> {
     pub stepper: S,
     pub min_error: Option<f64>,
     pub max_error: Option<f64>,
@@ -226,7 +226,7 @@ pub struct DynamicErrorStep<S> {
     pub dt_guess: f64,
 }
 
-impl<S: DynamicStepper> DynamicErrorStep<S> {
+impl<S: DynamicStepper> DynamicErrorStepSolver<S> {
     fn get_initial_dt(
         &self,
         initial_state: &Array1<Complex<f64>>,
@@ -243,7 +243,7 @@ impl<S: DynamicStepper> DynamicErrorStep<S> {
         step_dt_guess * self.target_error / error
     }
 }
-impl<S: DynamicStepper> Solver for DynamicErrorStep<S> {
+impl<S: DynamicStepper> Solver for DynamicErrorStepSolver<S> {
     fn solve<T: SDESystem, M: Measurement>(
         &self,
         initial_state: &Array1<Complex<f64>>,
