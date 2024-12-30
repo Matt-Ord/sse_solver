@@ -3,9 +3,9 @@ use std::thread;
 use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex;
 use pyo3::{exceptions::PyAssertionError, prelude::*};
-use sse_solver::solvers::solver::{DynamicErrorStepSolver, DynamicNormStepSolver, DynamicStepper};
 use sse_solver::solvers::{
-    FixedStepSolver, Measurement, OperatorMeasurement, Solver, StateMeasurement, Stepper,
+    DynamicErrorStepSolver, FixedStepSolver, Measurement, OperatorMeasurement, Solver,
+    StateMeasurement, Stepper,
 };
 use sse_solver::sparse::PlannedSplitScatteringArray;
 use sse_solver::{
@@ -105,22 +105,22 @@ enum DynStepper {
     NormalizedOrder2ExplicitWeakR5(NormalizedStepper<Order2ExplicitWeakR5Stepper>),
 }
 
-impl DynamicStepper for DynStepper {
+impl Stepper for DynStepper {
     fn step<T: SDESystem>(
         &self,
         state: &Array1<Complex<f64>>,
         system: &T,
         t: f64,
         dt: f64,
-    ) -> (Array1<Complex<f64>>, f64) {
+    ) -> (Array1<Complex<f64>>, Option<f64>) {
         match self {
-            DynStepper::Euler(s) => (s.step(state, system, t, dt), 1.0),
-            DynStepper::NormalizedEuler(s) => (s.step(state, system, t, dt), 1.0),
-            DynStepper::Milsten(s) => (s.step(state, system, t, dt), 1.0),
-            DynStepper::Order2ExplicitWeak(s) => DynamicStepper::step(s, state, system, t, dt),
-            DynStepper::NormalizedOrder2ExplicitWeak(s) => (s.step(state, system, t, dt), 1.0),
-            DynStepper::Order2ExplicitWeakR5(s) => DynamicStepper::step(s, state, system, t, dt),
-            DynStepper::NormalizedOrder2ExplicitWeakR5(s) => (s.step(state, system, t, dt), 1.0),
+            DynStepper::Euler(s) => s.step(state, system, t, dt),
+            DynStepper::NormalizedEuler(s) => s.step(state, system, t, dt),
+            DynStepper::Milsten(s) => s.step(state, system, t, dt),
+            DynStepper::Order2ExplicitWeak(s) => s.step(state, system, t, dt),
+            DynStepper::NormalizedOrder2ExplicitWeak(s) => s.step(state, system, t, dt),
+            DynStepper::Order2ExplicitWeakR5(s) => s.step(state, system, t, dt),
+            DynStepper::NormalizedOrder2ExplicitWeakR5(s) => s.step(state, system, t, dt),
         }
     }
 }
@@ -158,10 +158,10 @@ impl SimulationConfig {
         let stepper = self.get_stepper();
         if self.n_realizations == 1 {
             if let Some(delta) = self.delta {
-                return DynamicNormStepSolver {
-                    max_delta: delta.2,
-                    target_delta: delta.1,
-                    min_delta: delta.0,
+                return DynamicErrorStepSolver {
+                    max_error: delta.2,
+                    target_error: delta.1,
+                    min_error: delta.0,
                     stepper,
                     dt_guess: self.dt,
                 }

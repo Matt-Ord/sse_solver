@@ -10,7 +10,7 @@ use crate::{
     system::{SDEStep, SDESystem},
 };
 
-use super::solver::DynamicStepper;
+use super::Stepper;
 
 /// The Order 2 General Weak Taylor Scheme defined in 5.1 of
 /// <https://www.jstor.org/stable/27862707>
@@ -19,14 +19,14 @@ use super::solver::DynamicStepper;
 /// to the other methods discussed in the paper
 pub struct ExplicitWeakStepper {}
 
-impl DynamicStepper for ExplicitWeakStepper {
+impl Stepper for ExplicitWeakStepper {
     fn step<T: SDESystem>(
         &self,
         state: &Array1<Complex<f64>>,
         system: &T,
         t: f64,
         dt: f64,
-    ) -> (Array1<Complex<f64>>, f64) {
+    ) -> (Array1<Complex<f64>>, Option<f64>) {
         let mut rng = rand::thread_rng();
         // Sample the V distribution
         let dv = &rng.sample(VDistribution {
@@ -107,7 +107,7 @@ impl DynamicStepper for ExplicitWeakStepper {
 
         let error = (&step - euler_step).norm_max();
 
-        (step, error)
+        (step, Some(error))
     }
 }
 
@@ -276,7 +276,7 @@ impl ExplicitWeakR5Stepper {
     }
 }
 
-impl DynamicStepper for ExplicitWeakR5Stepper {
+impl Stepper for ExplicitWeakR5Stepper {
     #[allow(clippy::too_many_lines, clippy::similar_names)]
     fn step<T: SDESystem>(
         &self,
@@ -284,7 +284,7 @@ impl DynamicStepper for ExplicitWeakR5Stepper {
         system: &T,
         t: f64,
         dt: f64,
-    ) -> (Array1<Complex<f64>>, f64) {
+    ) -> (Array1<Complex<f64>>, Option<f64>) {
         let increment = Increment::new(system.n_incoherent(), dt);
 
         let h_00 = &Self::get_h_0_state::<0>(state, [], [], &increment);
@@ -456,6 +456,6 @@ impl DynamicStepper for ExplicitWeakR5Stepper {
         );
         let error = (&step - euler_step).norm_l2();
 
-        (step, error)
+        (step, Some(error))
     }
 }

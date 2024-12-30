@@ -21,7 +21,7 @@ impl Stepper for EulerStepper {
         system: &T,
         t: f64,
         dt: f64,
-    ) -> Array1<Complex<f64>> {
+    ) -> (Array1<Complex<f64>>, Option<f64>) {
         // The basic euler method
         // Y_n+1 = Y_n + a dt + \sum_k b_k dW
         // where dW are normalized gaussian random variables,  <dW_k* dW_k'> = dt
@@ -37,7 +37,7 @@ impl Stepper for EulerStepper {
                 .collect(),
         };
 
-        system.get_step(&step, state, t)
+        (system.get_step(&step, state, t), None)
     }
 }
 
@@ -50,7 +50,7 @@ impl Stepper for MilstenStepper {
         system: &T,
         t: f64,
         dt: f64,
-    ) -> Array1<Complex<f64>> {
+    ) -> (Array1<Complex<f64>>, Option<f64>) {
         // The explicit milsten scheme for commuting noise
         // Y_k(n+1) = Y_k(n) + \underline{a}_k dt + \frac{1}{2} \sum_j (b^j(t, \bar{Y}(n))_k + b^j(t, Y(n))_k)dW^j
         // where dW are normalized gaussian random variables,  <dW_k* dW_k'> = dt
@@ -132,6 +132,6 @@ impl Stepper for MilstenStepper {
             t,
         );
 
-        out
+        (out, None)
     }
 }
