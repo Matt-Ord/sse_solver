@@ -86,7 +86,6 @@
         "tamasfe.even-better-toml",
         "charliermarsh.ruff",
         "ms-python.vscode-pylance",
-        "1YiB.rust-bundle",
         "rust-lang.rust-analyzer",
         "vadimcn.vscode-lldb",
         "dseight.disasexpl",

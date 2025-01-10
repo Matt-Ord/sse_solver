@@ -151,6 +151,16 @@ impl<S: Stepper> DynamicErrorStepSolver<S> {
         step_dt_guess * self.target_error / current_delta
     }
 }
+
+fn get_nth_unstable_by<T: Clone, F>(v: &[T], n: usize, f: F) -> T
+where
+    F: Fn(&T, &T) -> std::cmp::Ordering,
+{
+    let mut owned = v.to_owned();
+    let (_, n_th, _) = owned.select_nth_unstable_by(n, f);
+    n_th.clone()
+}
+
 impl<S: Stepper> Solver for DynamicErrorStepSolver<S> {
     fn solve<T: SDESystem, M: Measurement>(
         &self,
@@ -163,11 +173,19 @@ impl<S: Stepper> Solver for DynamicErrorStepSolver<S> {
         let mut current = initial_state.to_owned();
         let mut current_t = 0f64;
 
-        let mut step_dt = self.get_initial_dt(initial_state, system, current_t);
+        let initial_dt = self.get_initial_dt(initial_state, system, current_t);
+        let mut previous_dt = [initial_dt; 9];
+        let mut step_idx = 0;
 
         for t in times {
             let mut res_dt = t - current_t;
-            while res_dt > step_dt {
+            loop {
+                let step_dt = get_nth_unstable_by(&previous_dt, 5, |a, b| {
+                    a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+                });
+                if res_dt <= step_dt {
+                    break;
+                }
                 let (step, error) = self.stepper.step(&current, system, current_t, step_dt);
 
                 let current_delta = error.unwrap_or(step.norm_l2());
@@ -177,18 +195,20 @@ impl<S: Stepper> Solver for DynamicErrorStepSolver<S> {
                     current += &step;
                     current_t += step_dt;
                     res_dt -= step_dt;
+                    step_idx += 1;
                 }
 
                 // Adjust the step size - note we are conservative about increasing the step size
                 // immediately to the target delta, as the increments are stochastic
-                step_dt *= self.target_error / current_delta;
+                previous_dt[step_idx % previous_dt.len()] =
+                    step_dt * self.target_error / current_delta;
             }
             // Behaves poorly for really small time steps
             // This should have a very small effect on the results
-            if res_dt > step_dt * 1e-3 {
-                current += &self.stepper.step(&current, system, current_t, res_dt).0;
-                current_t += res_dt;
-            }
+            // if res_dt > step_dt * 1e-3 {
+            //     current += &self.stepper.step(&current, system, current_t, res_dt).0;
+            //     current_t += res_dt;
+            // }
 
             out.push(measurement.measure(&current));
         }
