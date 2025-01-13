@@ -144,6 +144,12 @@ where
 }
 
 fn get_median(previous_dt: &[f64]) -> f64 {
+    // We should use .div_floor when `int_roundings`` is stabilized
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
     get_nth_unstable_by(
         previous_dt,
         (previous_dt.len() as f64 / 2.0).floor() as usize,
