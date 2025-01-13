@@ -164,6 +164,7 @@ impl SimulationConfig {
                     min_error: delta.0,
                     stepper,
                     dt_guess: self.dt,
+                    n_average: 11,
                 }
                 .solve(initial_state, system, measurement, &self.times);
             }
