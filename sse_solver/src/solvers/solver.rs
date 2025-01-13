@@ -131,6 +131,22 @@ pub struct DynamicErrorStepSolver<S> {
     pub max_error: Option<f64>,
     pub target_error: f64,
     pub dt_guess: f64,
+    pub n_average: usize,
+}
+
+fn get_nth_unstable_by<T: Clone, F>(v: &[T], n: usize, f: F) -> T
+where
+    F: Fn(&T, &T) -> std::cmp::Ordering,
+{
+    let mut owned = v.to_owned();
+    let (_, n_th, _) = owned.select_nth_unstable_by(n, f);
+    n_th.clone()
+}
+
+fn get_median(previous_dt: &[f64]) -> f64 {
+    get_nth_unstable_by(previous_dt, previous_dt.len().div_ceil(2), |a, b| {
+        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+    })
 }
 
 impl<S: Stepper> DynamicErrorStepSolver<S> {
@@ -152,15 +168,6 @@ impl<S: Stepper> DynamicErrorStepSolver<S> {
     }
 }
 
-fn get_nth_unstable_by<T: Clone, F>(v: &[T], n: usize, f: F) -> T
-where
-    F: Fn(&T, &T) -> std::cmp::Ordering,
-{
-    let mut owned = v.to_owned();
-    let (_, n_th, _) = owned.select_nth_unstable_by(n, f);
-    n_th.clone()
-}
-
 impl<S: Stepper> Solver for DynamicErrorStepSolver<S> {
     fn solve<T: SDESystem, M: Measurement>(
         &self,
@@ -174,18 +181,13 @@ impl<S: Stepper> Solver for DynamicErrorStepSolver<S> {
         let mut current_t = 0f64;
 
         let initial_dt = self.get_initial_dt(initial_state, system, current_t);
-        let mut previous_dt = [initial_dt; 9];
+        let mut previous_dt = vec![initial_dt; self.n_average];
         let mut step_idx = 0;
 
         for t in times {
             let mut res_dt = t - current_t;
-            loop {
-                let step_dt = get_nth_unstable_by(&previous_dt, 5, |a, b| {
-                    a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-                });
-                if res_dt <= step_dt {
-                    break;
-                }
+            let step_dt = get_median(&previous_dt);
+            while res_dt <= step_dt {
                 let (step, error) = self.stepper.step(&current, system, current_t, step_dt);
 
                 let current_delta = error.unwrap_or(step.norm_l2());
@@ -200,15 +202,15 @@ impl<S: Stepper> Solver for DynamicErrorStepSolver<S> {
 
                 // Adjust the step size - note we are conservative about increasing the step size
                 // immediately to the target delta, as the increments are stochastic
-                previous_dt[step_idx % previous_dt.len()] =
-                    step_dt * self.target_error / current_delta;
+                let len = previous_dt.len();
+                previous_dt[step_idx % len] = step_dt * self.target_error / current_delta;
             }
             // Behaves poorly for really small time steps
-            // This should have a very small effect on the results
-            // if res_dt > step_dt * 1e-3 {
-            //     current += &self.stepper.step(&current, system, current_t, res_dt).0;
-            //     current_t += res_dt;
-            // }
+            // If we simply ignore a small step it will have no effect on the result
+            if res_dt > step_dt * 1e-3 {
+                current += &self.stepper.step(&current, system, current_t, res_dt).0;
+                current_t += res_dt;
+            }
 
             out.push(measurement.measure(&current));
         }
