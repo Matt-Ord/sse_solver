@@ -189,7 +189,7 @@ impl<S: Stepper> Solver for DynamicErrorStepSolver<S> {
         for t in times {
             let mut res_dt = t - current_t;
             let step_dt = get_median(&previous_dt);
-            while res_dt <= step_dt {
+            while res_dt > step_dt {
                 let (step, error) = self.stepper.step(&current, system, current_t, step_dt);
 
                 let current_delta = error.unwrap_or(step.norm_l2());
