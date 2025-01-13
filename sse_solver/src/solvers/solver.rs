@@ -144,9 +144,11 @@ where
 }
 
 fn get_median(previous_dt: &[f64]) -> f64 {
-    get_nth_unstable_by(previous_dt, previous_dt.len().div_ceil(2), |a, b| {
-        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-    })
+    get_nth_unstable_by(
+        previous_dt,
+        (previous_dt.len() as f64 / 2.0).floor() as usize,
+        |a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal),
+    )
 }
 
 impl<S: Stepper> DynamicErrorStepSolver<S> {
