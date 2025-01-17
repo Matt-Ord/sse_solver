@@ -179,7 +179,9 @@ fn second_order_solver_benchmark_sparse() {
     test::black_box(
         FixedStepSolver {
             target_dt: 1.0 / 20000.0,
-            stepper: Order2ExplicitWeakStepper {},
+            stepper: Order2ExplicitWeakStepper {
+                error_measure: None,
+            },
         }
         .solve(
             &initial_state,
