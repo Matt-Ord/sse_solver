@@ -205,13 +205,13 @@ impl<S: Stepper> Solver for DynamicErrorStepSolver<S> {
                     current += &step;
                     current_t += step_dt;
                     res_dt -= step_dt;
-                    step_idx += 1;
                 }
 
                 // Adjust the step size - note we are conservative about increasing the step size
                 // immediately to the target delta, as the increments are stochastic
                 let len = previous_dt.len();
                 previous_dt[step_idx % len] = step_dt * self.target_error / current_delta;
+                step_idx += 1;
             }
             // Behaves poorly for really small time steps
             // If we simply ignore a small step it will have no effect on the result

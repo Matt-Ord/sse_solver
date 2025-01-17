@@ -107,7 +107,7 @@ impl Stepper for ExplicitWeakStepper {
 
         let error = (&step - euler_step).norm_max();
 
-        (step, Some(error))
+        (step, None)
     }
 }
 
