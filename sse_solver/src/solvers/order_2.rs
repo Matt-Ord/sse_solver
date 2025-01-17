@@ -12,12 +12,19 @@ use crate::{
 
 use super::Stepper;
 
+pub enum ErrorMeasure {
+    L1,
+    L2,
+    Max,
+}
 /// The Order 2 General Weak Taylor Scheme defined in 5.1 of
 /// <https://www.jstor.org/stable/27862707>
 ///
 /// This method scales poorly for large n operators compared
 /// to the other methods discussed in the paper
-pub struct ExplicitWeakStepper {}
+pub struct ExplicitWeakStepper {
+    pub error_measure: Option<ErrorMeasure>,
+}
 
 impl Stepper for ExplicitWeakStepper {
     fn step<T: SDESystem>(
@@ -49,8 +56,6 @@ impl Stepper for ExplicitWeakStepper {
                 incoherent: dw,
             },
         );
-        // H_0 = Y_n + a(Y_n) dt + \sum_j b^j w_j
-        let h0 = state + &euler_step;
 
         let operators = T::get_operators_from_parts(&parts);
 
@@ -68,8 +73,10 @@ impl Stepper for ExplicitWeakStepper {
             .collect::<Vec<_>>();
 
         // Y_n+1 = Y_n + (a(Y_n) + a(H_0)) dt / 2 + ...
+        // Where H_0 = Y_n + a(Y_n) dt + \sum_j b^j w_j is the result of a single euler step
+        // H_0 = Y_n + a(Y_n) dt + \sum_j b^j w_j
         let mut step = (&operators.coherent
-            + system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, &h0, t))
+            + system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, &(state + &euler_step), t))
             * (dt * 0.5);
 
         for k in 0..system.n_incoherent() {
@@ -105,9 +112,14 @@ impl Stepper for ExplicitWeakStepper {
             }
         }
 
-        let error = (&step - euler_step).norm_l2();
+        let error = match self.error_measure {
+            Some(ErrorMeasure::L1) => Some((&step - euler_step).norm_l1()),
+            Some(ErrorMeasure::L2) => Some((&step - euler_step).norm_l2()),
+            Some(ErrorMeasure::Max) => Some((&step - euler_step).norm_max()),
+            None => None,
+        };
 
-        (step, Some(error))
+        (step, error)
     }
 }
 
@@ -118,7 +130,9 @@ impl Stepper for ExplicitWeakStepper {
 /// See Table 5.2 for the various weights
 ///
 /// Note in this implimentation we assume a(t) = a(0)
-pub struct ExplicitWeakR5Stepper {}
+pub struct ExplicitWeakR5Stepper {
+    pub error_measure: Option<ErrorMeasure>,
+}
 
 impl ExplicitWeakR5Stepper {
     // Note: for explicit solvers, A and B are lower diagonals
@@ -454,8 +468,13 @@ impl Stepper for ExplicitWeakR5Stepper {
             state,
             t,
         );
-        let error = (&step - euler_step).norm_l2();
+        let error = match self.error_measure {
+            Some(ErrorMeasure::L1) => Some((&step - euler_step).norm_l1()),
+            Some(ErrorMeasure::L2) => Some((&step - euler_step).norm_l2()),
+            Some(ErrorMeasure::Max) => Some((&step - euler_step).norm_max()),
+            None => None,
+        };
 
-        (step, Some(error))
+        (step, error)
     }
 }

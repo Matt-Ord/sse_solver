@@ -134,17 +134,25 @@ impl SimulationConfig {
             }
             SSEMethod::Milsten => DynStepper::Milsten(MilstenStepper {}),
             SSEMethod::Order2ExplicitWeak => {
-                DynStepper::Order2ExplicitWeak(Order2ExplicitWeakStepper {})
+                DynStepper::Order2ExplicitWeak(Order2ExplicitWeakStepper {
+                    error_measure: None,
+                })
             }
             SSEMethod::NormalizedOrder2ExplicitWeak => DynStepper::NormalizedOrder2ExplicitWeak(
-                NormalizedStepper(Order2ExplicitWeakStepper {}),
+                NormalizedStepper(Order2ExplicitWeakStepper {
+                    error_measure: None,
+                }),
             ),
             SSEMethod::Order2ExplicitWeakR5 => {
-                DynStepper::Order2ExplicitWeakR5(Order2ExplicitWeakR5Stepper {})
+                DynStepper::Order2ExplicitWeakR5(Order2ExplicitWeakR5Stepper {
+                    error_measure: None,
+                })
             }
             SSEMethod::NormalizedOrder2ExplicitWeakR5 => {
                 DynStepper::NormalizedOrder2ExplicitWeakR5(NormalizedStepper(
-                    Order2ExplicitWeakR5Stepper {},
+                    Order2ExplicitWeakR5Stepper {
+                        error_measure: None,
+                    },
                 ))
             }
         }
