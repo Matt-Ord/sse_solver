@@ -105,9 +105,9 @@ impl Stepper for ExplicitWeakStepper {
             }
         }
 
-        let error = (&step - euler_step).norm_max();
+        let error = (&step - euler_step).norm_l2();
 
-        (step, None)
+        (step, Some(error))
     }
 }
 
