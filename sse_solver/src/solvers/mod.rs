@@ -23,8 +23,11 @@ pub mod localized;
 #[cfg(feature = "localized")]
 pub use localized::*;
 
-#[derive(Default)]
-pub struct NormalizedStepper<S>(pub S);
+#[derive(Default, Debug)]
+pub struct NormalizedStepper<S> {
+    pub inner: S,
+    pub calculate_error: bool,
+}
 
 impl<S: Stepper> Stepper for NormalizedStepper<S> {
     fn step<T: SDESystem>(
@@ -34,13 +37,17 @@ impl<S: Stepper> Stepper for NormalizedStepper<S> {
         t: f64,
         dt: f64,
     ) -> (Array1<Complex<f64>>, Option<f64>) {
-        let (step, err) = self.0.step(state, system, t, dt);
-        let mut next = state + step;
+        let (step, inner_err) = self.inner.step(state, system, t, dt);
+        let next = state + step;
+        let next_norm = next.norm_l2();
         // Normalize the state
-        next /= Complex {
-            re: next.norm_l2(),
-            im: 0f64,
+        let next_normalized = &next / next_norm;
+
+        let err = if self.calculate_error {
+            Some(next_norm)
+        } else {
+            inner_err
         };
-        (next - state, err)
+        (next_normalized - state, err)
     }
 }

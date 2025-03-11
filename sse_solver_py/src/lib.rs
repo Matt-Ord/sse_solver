@@ -26,6 +26,7 @@ enum SSEMethod {
     Euler,
     NormalizedEuler,
     Milsten,
+    NormalizedMilsten,
     Order2ExplicitWeak,
     NormalizedOrder2ExplicitWeak,
     Order2ExplicitWeakR5,
@@ -63,11 +64,12 @@ impl SimulationConfig {
             "Euler" => SSEMethod::Euler,
             "NormalizedEuler" => SSEMethod::NormalizedEuler,
             "Milsten" => SSEMethod::Milsten,
+            "NormalizedMilsten" => SSEMethod::NormalizedMilsten,
             "Order2ExplicitWeak" => SSEMethod::Order2ExplicitWeak,
             "NormalizedOrder2ExplicitWeak" => SSEMethod::NormalizedOrder2ExplicitWeak,
             "Order2ExplicitWeakR5" => SSEMethod::Order2ExplicitWeakR5,
             "NormalizedOrder2ExplicitWeakR5" => SSEMethod::NormalizedOrder2ExplicitWeakR5,
-            _ => panic!(),
+            _ => panic!("Invalid method"),
         };
         SimulationConfig {
             times,
@@ -85,6 +87,7 @@ impl SimulationConfig {
             SSEMethod::Euler => "Euler".to_owned(),
             SSEMethod::NormalizedEuler => "NormalizedEuler".to_owned(),
             SSEMethod::Milsten => "Milsten".to_owned(),
+            SSEMethod::NormalizedMilsten => "NormalizedMilsten".to_owned(),
             SSEMethod::Order2ExplicitWeak => "Order2ExplicitWeak".to_owned(),
             SSEMethod::NormalizedOrder2ExplicitWeak => "NormalizedOrder2ExplicitWeak".to_owned(),
             SSEMethod::Order2ExplicitWeakR5 => "Order2ExplicitWeakR5".to_owned(),
@@ -99,6 +102,7 @@ enum DynStepper {
     Euler(EulerStepper),
     NormalizedEuler(NormalizedStepper<EulerStepper>),
     Milsten(MilstenStepper),
+    NormalizedMilsten(NormalizedStepper<MilstenStepper>),
     Order2ExplicitWeak(Order2ExplicitWeakStepper),
     NormalizedOrder2ExplicitWeak(NormalizedStepper<Order2ExplicitWeakStepper>),
     Order2ExplicitWeakR5(Order2ExplicitWeakR5Stepper),
@@ -117,6 +121,7 @@ impl Stepper for DynStepper {
             DynStepper::Euler(s) => s.step(state, system, t, dt),
             DynStepper::NormalizedEuler(s) => s.step(state, system, t, dt),
             DynStepper::Milsten(s) => s.step(state, system, t, dt),
+            DynStepper::NormalizedMilsten(s) => s.step(state, system, t, dt),
             DynStepper::Order2ExplicitWeak(s) => s.step(state, system, t, dt),
             DynStepper::NormalizedOrder2ExplicitWeak(s) => s.step(state, system, t, dt),
             DynStepper::Order2ExplicitWeakR5(s) => s.step(state, system, t, dt),
@@ -129,31 +134,40 @@ impl SimulationConfig {
     fn get_stepper(&self) -> DynStepper {
         match self.method {
             SSEMethod::Euler => DynStepper::Euler(EulerStepper::default()),
-            SSEMethod::NormalizedEuler => {
-                DynStepper::NormalizedEuler(NormalizedStepper(EulerStepper::default()))
-            }
+            SSEMethod::NormalizedEuler => DynStepper::NormalizedEuler(NormalizedStepper {
+                inner: EulerStepper::default(),
+                calculate_error: true,
+            }),
             SSEMethod::Milsten => DynStepper::Milsten(MilstenStepper {}),
+            SSEMethod::NormalizedMilsten => DynStepper::NormalizedMilsten(NormalizedStepper {
+                inner: MilstenStepper {},
+                calculate_error: true,
+            }),
             SSEMethod::Order2ExplicitWeak => {
                 DynStepper::Order2ExplicitWeak(Order2ExplicitWeakStepper {
                     error_measure: None,
                 })
             }
-            SSEMethod::NormalizedOrder2ExplicitWeak => DynStepper::NormalizedOrder2ExplicitWeak(
-                NormalizedStepper(Order2ExplicitWeakStepper {
-                    error_measure: None,
-                }),
-            ),
+            SSEMethod::NormalizedOrder2ExplicitWeak => {
+                DynStepper::NormalizedOrder2ExplicitWeak(NormalizedStepper {
+                    inner: Order2ExplicitWeakStepper {
+                        error_measure: None,
+                    },
+                    calculate_error: true,
+                })
+            }
             SSEMethod::Order2ExplicitWeakR5 => {
                 DynStepper::Order2ExplicitWeakR5(Order2ExplicitWeakR5Stepper {
                     error_measure: None,
                 })
             }
             SSEMethod::NormalizedOrder2ExplicitWeakR5 => {
-                DynStepper::NormalizedOrder2ExplicitWeakR5(NormalizedStepper(
-                    Order2ExplicitWeakR5Stepper {
+                DynStepper::NormalizedOrder2ExplicitWeakR5(NormalizedStepper {
+                    inner: Order2ExplicitWeakR5Stepper {
                         error_measure: None,
                     },
-                ))
+                    calculate_error: true,
+                })
             }
         }
     }
