@@ -103,5 +103,5 @@
   // "customizations": {},
   // Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
   // "remoteUser": "root"
-  "onCreateCommand": "npm install -g cspell && uv python install"
+  "onCreateCommand": "npm install -g cspell && sudo apt update && sudo apt install python3.9-dev -y && uv python install"
 }
