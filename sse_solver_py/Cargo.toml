@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ndarray = { version = "0.15.6" }
+ndarray = { version = "0.16.1" }
 num-complex = { version = "0.4.6" }
-pyo3 = { version = "0.23.3", features = ["num-complex"] }
+pyo3 = { version = "0.27.1", features = ["num-complex"] }
 sse_solver = { version = "0.1.0", path = "../sse_solver" }
 
 [features]

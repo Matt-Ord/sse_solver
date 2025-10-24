@@ -34,7 +34,7 @@ impl Stepper for ExplicitWeakStepper {
         t: f64,
         dt: f64,
     ) -> (Array1<Complex<f64>>, Option<f64>) {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         // Sample the V distribution
         let dv = &rng.sample(VDistribution {
             dt,
@@ -189,7 +189,7 @@ impl Increment {
     }
 
     fn new(n_incoherent: usize, dt: f64) -> Self {
-        let rng = rand::thread_rng();
+        let rng = rand::rng();
         let i_hat_noise = ThreePointW::new(dt)
             .sample_iter(rng.clone())
             .take(n_incoherent)

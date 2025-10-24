@@ -24,7 +24,7 @@ mod tests {
         n_operators: usize,
         n_states: usize,
     ) -> FullNoise<FactorizedArray<Complex<f64>>, FactorizedArray<Complex<f64>>> {
-        let rng = rand::thread_rng();
+        let rng = rand::rng();
         // let noise: Complex<f64> = rng.sample(StandardComplexNormal);
         let amplitudes = Array1::from_iter(
             rng.clone()
@@ -54,7 +54,7 @@ mod tests {
         n_operators: usize,
         n_states: usize,
     ) -> SSESystem<Array2<Complex<f64>>, DiagonalNoise> {
-        let rng = rand::thread_rng();
+        let rng = rand::rng();
         let hamiltonian = Array2::from_shape_vec(
             [n_states, n_states],
             rng.clone()
@@ -73,7 +73,7 @@ mod tests {
         n_operators: usize,
         n_states: usize,
     ) -> SSESystem<Array2<Complex<f64>>, DiagonalNoise> {
-        let rng = rand::thread_rng();
+        let rng = rand::rng();
         let hamiltonian = Array2::from_diag(&Array1::from_iter(
             rng.clone()
                 .sample_iter(StandardComplexNormal)
@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn test_banded_dot_product() {
-        let rng = rand::thread_rng();
+        let rng = rand::rng();
         let shape = [10, 100];
 
         let full = Array2::from_shape_vec(
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_banded_transposed_dot_product() {
-        let rng = rand::thread_rng();
+        let rng = rand::rng();
         let shape = [100, 10];
 
         let full = Array2::from_shape_vec(

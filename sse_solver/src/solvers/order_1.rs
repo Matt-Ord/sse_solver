@@ -26,7 +26,7 @@ impl Stepper for EulerStepper {
         // Y_n+1 = Y_n + a dt + \sum_k b_k dW
         // where dW are normalized gaussian random variables,  <dW_k* dW_k'> = dt
 
-        let rng = rand::thread_rng();
+        let rng = rand::rng();
         let sqt_dt = dt.sqrt();
         let step = SDEStep {
             coherent: Complex { re: dt, im: 0f64 },
@@ -58,7 +58,7 @@ impl Stepper for MilstenStepper {
         // Pre-compute the system parts, since we use them twice (for supporting value and actual step)
         let parts = system.get_parts(state, t);
 
-        let rng = rand::thread_rng();
+        let rng = rand::rng();
         let sqrt_dt = dt.sqrt();
 
         let noise = rng
@@ -109,7 +109,7 @@ impl Stepper for MilstenStepper {
         // \bar{Y}(n) = Y(n) + \sum_j b^j dW^j
         let first_supporting_step = SDEStep {
             coherent: Complex { re: dt, im: 0f64 },
-            incoherent: &noise.iter().map(|d| (d + 0.5f64 * sqrt_dt)).collect(),
+            incoherent: &noise.iter().map(|d| d + 0.5f64 * sqrt_dt).collect(),
         };
         let mut first_supporting_state =
             state + T::get_step_from_parts(&parts, &first_supporting_step);

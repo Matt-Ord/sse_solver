@@ -1,6 +1,4 @@
 #![feature(test)]
-#![feature(array_chunks)]
-#![feature(slice_as_chunks)]
 #![feature(portable_simd)]
 
 use ndarray::{Array1, Array2, Array3};
@@ -301,9 +299,11 @@ fn float_array_dot_product_vector() {
 #[inline]
 pub fn dot_prod_simd(a: &[f64], b: &[f64]) -> f64 {
     assert!(a.len() == b.len());
-    a.array_chunks::<8>()
+    a.as_chunks::<8>()
+        .0
+        .iter()
         .map(|&a| f64x8::from_array(a))
-        .zip(b.array_chunks::<8>().map(|&b| f64x8::from_array(b)))
+        .zip(b.as_chunks::<8>().0.iter().map(|&b| f64x8::from_array(b)))
         .fold(f64x8::splat(0.), |acc, (a, b)| a.mul_add(b, acc))
         .reduce_sum()
 }
@@ -636,7 +636,7 @@ fn mul_bench(
 
 #[allow(dead_code)]
 fn mul_rand_array() {
-    let rng = rand::thread_rng();
+    let rng = rand::rng();
 
     let lhs: Array1<Complex<f64>> = rng
         .clone()

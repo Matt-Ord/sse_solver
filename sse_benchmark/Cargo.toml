@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ndarray = { version = "0.15.0" }
+ndarray = { version = "0.16.1" }
 num-complex = "0.4.5"
 sse_solver = { version = "0.1.0", path = "../sse_solver", features = ["serde"] }
-rand = "0.8.5"
-rand_distr = "0.4.3"
+rand = "0.9.2"
+rand_distr = "0.5.1"
