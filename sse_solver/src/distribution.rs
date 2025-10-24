@@ -1,7 +1,7 @@
 use ndarray::Array2;
 use num_complex::Complex;
 use rand::Rng;
-use rand_distr::{Distribution, StandardNormal, WeightedIndex};
+use rand_distr::{weighted::WeightedIndex, Distribution, StandardNormal};
 
 /// The Standard Normal distribution for a complex number
 /// ``<dWi dWj*> = delta_ij``
@@ -44,7 +44,7 @@ impl Distribution<Array2<f64>> for V {
 
         for i in 0..self.n {
             for j in 0..i {
-                let choice = rng.gen::<bool>();
+                let choice = rng.random::<bool>();
                 out[[i, j]] = if choice { options[0] } else { options[1] };
                 out[[j, i]] = if choice { options[1] } else { options[0] };
             }

@@ -5,13 +5,16 @@
   // Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
   "image": "mcr.microsoft.com/devcontainers/base:bullseye",
   "features": {
-    "ghcr.io/devcontainers/features/python:1": {
-      "installTools": true,
-      "version": "3.13"
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    "ghcr.io/va-h/devcontainers-features/uv:1": {
+      "shellautocompletion": true,
+      "version": "latest"
     },
     "ghcr.io/devcontainers/features/rust:1": {
       "version": "latest",
-      "profile": "minimal"
+      "profile": "default"
     }
   },
   "customizations": {
@@ -93,11 +96,12 @@
         "fill-labs.dependi"
       ]
     }
-  }
+  },
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
   // "forwardPorts": [],
   // Configure tool-specific properties.
   // "customizations": {},
   // Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
   // "remoteUser": "root"
+  "onCreateCommand": "npm install -g cspell && uv python install"
 }
