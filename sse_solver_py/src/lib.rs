@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::thread;
 
-use ndarray::{Array1, Array2, Array3};
+use ndarray::{Array1, Array2, Array3, array};
 use num_complex::Complex;
 use pyo3::IntoPyObject;
 use pyo3::types::PyList;
@@ -11,7 +11,10 @@ use sse_solver::solvers::{
     StateMeasurement, Stepper,
 };
 use sse_solver::sparse::PlannedSplitScatteringArray;
-use sse_solver::system::simple_stochastic::{SimpleStochastic, SimpleStochasticFn};
+use sse_solver::system::harmonic_langevin::{
+    HarmonicLangevinParameters, get_harmonic_langevin_system,
+};
+use sse_solver::system::simple_stochastic::{SimpleStochasticFn, SimpleStochasticSDESystem};
 use sse_solver::{
     solvers::{
         EulerStepper, MilstenStepper, NormalizedStepper, Order2ExplicitWeakR5Stepper,
@@ -237,6 +240,19 @@ impl SimulationConfig {
     }
 }
 
+fn warn_about_complex(py: Python<'_>) -> PyResult<()> {
+    // Attempt to import the 'warnings' module
+    let warnings = PyModule::import(py, "warnings")?;
+
+    // The message you want to display
+    let message = "This function has recently been changed to use real noise and is probably not working as intended with complex noise.";
+
+    // Call warnings.warn(message)
+    warnings.call_method1("warn", (message,))?;
+
+    Ok(())
+}
+
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn solve_sse(
@@ -245,6 +261,7 @@ fn solve_sse(
     noise_operators: Vec<Vec<Vec<Complex<f64>>>>,
     config: PyRef<SimulationConfig>,
 ) -> PyResult<Vec<Complex<f64>>> {
+    warn_about_complex(config.py())?;
     if initial_state.len() != hamiltonian.len() || hamiltonian[1].len() != hamiltonian.len() {
         return Err(PyAssertionError::new_err("Hamiltonian has bad shape"));
     }
@@ -319,6 +336,7 @@ fn solve_sse_banded(
     noise_operators: Vec<BandedData>,
     config: PyRef<SimulationConfig>,
 ) -> PyResult<Vec<Complex<f64>>> {
+    warn_about_complex(config.py())?;
     let shape = [initial_state.len(), initial_state.len()];
     assert!(hamiltonian.shape == shape);
     noise_operators
@@ -392,6 +410,7 @@ fn solve_sse_split_operator_for_measurement<
     config: PyRef<SimulationConfig>,
     measurement: &M,
 ) -> PyResult<Vec<Complex<f64>>> {
+    warn_about_complex(config.py())?;
     assert!(hamiltonian.c.len() == initial_state.len());
     noise_operators
         .iter()
@@ -471,6 +490,7 @@ fn solve_sse_bra_ket(
     ket: Vec<Complex<f64>>,
     config: PyRef<SimulationConfig>,
 ) -> PyResult<Vec<Complex<f64>>> {
+    warn_about_complex(config.py())?;
     let amplitudes = Array1::from_vec(amplitudes);
     let n_amplitudes = amplitudes.len();
 
@@ -505,7 +525,7 @@ fn solve_simple_stochastic(
     incoherent: Vec<Py<PyAny>>,
     config: PyRef<SimulationConfig>,
 ) -> PyResult<Vec<Complex<f64>>> {
-    let system = SimpleStochastic {
+    let system = SimpleStochasticSDESystem {
         coherent: Arc::new(move |t: f64, state: &Array1<Complex<f64>>| {
             Python::attach(|py| {
                 let args = (
@@ -544,6 +564,57 @@ fn solve_simple_stochastic(
         .collect())
 }
 
+#[pyclass]
+struct HarmonicLangevinSystemParameters {
+    #[pyo3(get, set)]
+    dimensionless_mass: f64,
+    #[pyo3(get, set)]
+    dimensionless_omega: f64,
+    #[pyo3(get, set)]
+    dimensionless_lambda: f64,
+    #[pyo3(get, set)]
+    kbt_div_hbar: f64,
+}
+#[pymethods]
+impl HarmonicLangevinSystemParameters {
+    #[new]
+    #[pyo3(signature = (*, dimensionless_mass, dimensionless_omega, dimensionless_lambda, kbt_div_hbar))]
+    fn new(
+        dimensionless_mass: f64,
+        dimensionless_omega: f64,
+        dimensionless_lambda: f64,
+        kbt_div_hbar: f64,
+    ) -> Self {
+        HarmonicLangevinSystemParameters {
+            dimensionless_mass,
+            dimensionless_omega,
+            dimensionless_lambda,
+            kbt_div_hbar,
+        }
+    }
+}
+#[pyfunction]
+fn solve_harmonic_langevin(
+    initial_state: Complex<f64>,
+    params: PyRef<HarmonicLangevinSystemParameters>,
+    config: PyRef<SimulationConfig>,
+) -> PyResult<Vec<Complex<f64>>> {
+    let system = get_harmonic_langevin_system(&HarmonicLangevinParameters {
+        dimensionless_mass: params.dimensionless_mass,
+        dimensionless_omega: params.dimensionless_omega,
+        dimensionless_lambda: params.dimensionless_lambda,
+        kbt_div_hbar: params.kbt_div_hbar,
+    });
+
+    let initial_state = array![initial_state];
+    Ok(config
+        .simulate_system(&initial_state, &system, &StateMeasurement {})
+        .iter()
+        .flat_map(|d| d.iter())
+        .cloned()
+        .collect())
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -553,9 +624,11 @@ fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_sse_split_operator, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_measured_split_operator, m)?)?;
     m.add_function(wrap_pyfunction!(solve_simple_stochastic, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_harmonic_langevin, m)?)?;
     m.add_class::<SimulationConfig>()?;
     m.add_class::<BandedData>()?;
     m.add_class::<SplitOperatorData>()?;
+    m.add_class::<HarmonicLangevinSystemParameters>()?;
 
     Ok(())
 }

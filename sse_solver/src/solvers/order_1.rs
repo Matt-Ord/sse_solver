@@ -2,11 +2,9 @@ use ndarray::Array1;
 use num_complex::Complex;
 
 use rand::Rng;
+use rand_distr::StandardNormal;
 
-use crate::{
-    distribution::StandardComplexNormal,
-    system::{SDEStep, SDESystem},
-};
+use crate::system::{SDEStep, SDESystem};
 
 use super::Stepper;
 
@@ -29,9 +27,9 @@ impl Stepper for EulerStepper {
         let rng = rand::rng();
         let sqt_dt = dt.sqrt();
         let step = SDEStep {
-            coherent: Complex { re: dt, im: 0f64 },
+            coherent: dt,
             incoherent: &rng
-                .sample_iter::<Complex<_>, _>(StandardComplexNormal)
+                .sample_iter::<f64, _>(StandardNormal)
                 .map(|d| d * sqt_dt)
                 .take(system.n_incoherent())
                 .collect(),
@@ -62,7 +60,7 @@ impl Stepper for MilstenStepper {
         let sqrt_dt = dt.sqrt();
 
         let noise = rng
-            .sample_iter::<Complex<_>, _>(StandardComplexNormal)
+            .sample_iter::<f64, _>(StandardNormal)
             .map(|d| d * sqrt_dt)
             .take(system.n_incoherent())
             .collect::<Vec<_>>();
@@ -70,7 +68,7 @@ impl Stepper for MilstenStepper {
         // The non-supported part of the step
         // Y_k(n+1) = Y_k(n) + a dt + \sum_j \frac{1}{2}  b^j(t, Y(n))_k dW^j - sqrt(dt)(b^j(t, Y(n))_k)
         let simple_step = SDEStep {
-            coherent: Complex { re: dt, im: 0f64 },
+            coherent: dt,
             incoherent: &noise.iter().map(|d| 0.5f64 * (d + sqrt_dt)).collect(),
         };
         let mut out = T::get_step_from_parts(&parts, &simple_step);
@@ -81,23 +79,15 @@ impl Stepper for MilstenStepper {
         // as suggested in the above book, we drop the \underline{a}_k term
         // \bar{Y}(n) = Y(n) + \sum_j b^j dW^j
         let second_supporting_step = SDEStep {
-            coherent: Complex { re: dt, im: 0f64 },
-            incoherent: &(0..system.n_incoherent())
-                .map(|_| Complex {
-                    re: sqrt_dt,
-                    im: 0f64,
-                })
-                .collect(),
+            coherent: dt,
+            incoherent: &(0..system.n_incoherent()).map(|_| sqrt_dt).collect(),
         };
         let second_supporting_state =
             state + T::get_step_from_parts(&parts, &second_supporting_step);
         // Add in the contribution to bb' from this supporting state (1/sqrt(dt) b(\bar{Y}))
         out += &system.get_incoherent_steps(
             &(0..system.n_incoherent())
-                .map(|_| Complex {
-                    re: -0.5f64 * sqrt_dt,
-                    im: 0f64,
-                })
+                .map(|_| -0.5f64 * sqrt_dt)
                 .collect::<Vec<_>>(),
             &second_supporting_state,
             t,
@@ -108,17 +98,14 @@ impl Stepper for MilstenStepper {
         // as suggested in the above book, eqn 11.1.14, we drop the \underline{a}_k term
         // \bar{Y}(n) = Y(n) + \sum_j b^j dW^j
         let first_supporting_step = SDEStep {
-            coherent: Complex { re: dt, im: 0f64 },
+            coherent: dt,
             incoherent: &noise.iter().map(|d| d + 0.5f64 * sqrt_dt).collect(),
         };
         let mut first_supporting_state =
             state + T::get_step_from_parts(&parts, &first_supporting_step);
         first_supporting_state += &system.get_incoherent_steps(
             &(0..system.n_incoherent())
-                .map(|_| Complex {
-                    re: -0.5f64 * sqrt_dt,
-                    im: 0f64,
-                })
+                .map(|_| -0.5f64 * sqrt_dt)
                 .collect::<Vec<_>>(),
             &second_supporting_state,
             t,

@@ -1,7 +1,7 @@
 use ndarray::Array2;
 use num_complex::Complex;
 use rand::Rng;
-use rand_distr::{weighted::WeightedIndex, Distribution, StandardNormal};
+use rand_distr::{Distribution, StandardNormal, weighted::WeightedIndex};
 
 /// The Standard Normal distribution for a complex number
 /// ``<dWi dWj*> = delta_ij``
@@ -25,6 +25,15 @@ impl Distribution<Complex<f64>> for StandardComplexNormal {
     }
 }
 
+pub struct RealStandardComplexNormal;
+
+impl Distribution<Complex<f64>> for RealStandardComplexNormal {
+    #[inline]
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Complex<f64> {
+        let re = rng.sample::<f64, _>(StandardNormal);
+        Complex { re, im: 0.0 }
+    }
+}
 /// The V distribution for n incoherent operators, according to eqn 14.2.8 - 14.2.10
 /// in 10.1007/978-3-662-12616-5
 /// P(V_{ij} = \pm dt) = 0.5

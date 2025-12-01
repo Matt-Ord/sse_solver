@@ -87,3 +87,27 @@ class SplitOperatorData:
     def c(self: Self) -> list[complex]: ...
     @property
     def d(self: Self) -> list[complex] | None: ...
+
+class HarmonicLangevinSystemParameters:
+    def __init__(
+        self,
+        *,
+        dimensionless_mass: float,
+        dimensionless_omega: float,
+        dimensionless_lambda: float,
+        kbt_div_hbar: float,
+    ) -> None: ...
+    @property
+    def dimensionless_mass(self: Self) -> float: ...
+    @property
+    def dimensionless_omega(self: Self) -> float: ...
+    @property
+    def dimensionless_lambda(self: Self) -> float: ...
+    @property
+    def kbt_div_hbar(self: Self) -> float: ...
+
+def solve_harmonic_langevin(
+    initial_state: complex,
+    params: HarmonicLangevinSystemParameters,
+    config: SimulationConfig,
+) -> list[complex]: ...

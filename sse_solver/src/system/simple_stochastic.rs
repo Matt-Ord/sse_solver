@@ -8,7 +8,7 @@ use crate::system::{SDEOperators, SDESystem};
 pub type SimpleStochasticFn =
     dyn Fn(f64, &Array1<Complex<f64>>) -> Array1<Complex<f64>> + Send + Sync;
 /// A Simple Stochastic System where the coherent and incoherent parts are given by functions
-pub struct SimpleStochastic {
+pub struct SimpleStochasticSDESystem {
     pub coherent: Arc<SimpleStochasticFn>,
     pub incoherent: Vec<Arc<SimpleStochasticFn>>,
 }
@@ -47,7 +47,7 @@ impl From<SimpleStochasticParts> for SimpleStochasticCoherentPart {
     }
 }
 
-impl SDESystem for SimpleStochastic {
+impl SDESystem for SimpleStochasticSDESystem {
     type Parts<'a> = SimpleStochasticParts;
 
     fn get_parts<'a>(&self, state: &'a Array1<Complex<f64>>, t: f64) -> Self::Parts<'a> {
@@ -90,7 +90,7 @@ impl SDESystem for SimpleStochastic {
 
     fn get_incoherent_steps_from_parts(
         parts: &Self::IncoherentParts<'_>,
-        steps: &[Complex<f64>],
+        steps: &[f64],
     ) -> Array1<Complex<f64>> {
         let mut result = Array1::from_elem(parts.size, Complex::<f64>::new(0.0, 0.0));
         for (i, step) in steps.iter().enumerate() {
@@ -112,7 +112,7 @@ impl SDESystem for SimpleStochastic {
 
     fn get_incoherent_step_from_part(
         part: &Self::IncoherentPart<'_>,
-        step: Complex<f64>,
+        step: f64,
     ) -> Array1<Complex<f64>> {
         &part.incoherent * step
     }
@@ -131,7 +131,7 @@ impl SDESystem for SimpleStochastic {
 
     fn get_coherent_step_from_parts(
         parts: &Self::CoherentPart<'_>,
-        step: Complex<f64>,
+        step: f64,
     ) -> Array1<Complex<f64>> {
         &parts.coherent * step
     }

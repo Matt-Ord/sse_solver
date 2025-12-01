@@ -1,4 +1,4 @@
-use ndarray::{linalg::Dot, Array1, Array2, Array3, Axis};
+use ndarray::{Array1, Array2, Array3, Axis, linalg::Dot};
 use num_complex::Complex;
 
 #[cfg(feature = "serde")]
@@ -235,7 +235,7 @@ impl<T: Tensor, U: Tensor> Noise for FullNoise<T, U> {
         state: &Array1<Complex<f64>>,
         t: f64,
     ) -> SSEStochasticIncoherentPart {
-        self.0[index].get_incoherent_part(state, t)
+        self.0[index % self.0.len()].get_incoherent_part(state, t)
     }
 }
 
@@ -321,8 +321,8 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
         let mut diagonal_coherent = Complex::<f64>::default();
         let mut diagonal_stochastic = Complex::default();
         let mut out = Complex {
-            re: step.coherent.im,
-            im: -step.coherent.re,
+            re: 0.0,
+            im: -step.coherent,
         } * &parts.hamiltonian;
 
         assert!(parts.stochastic.len() == step.incoherent.len());
@@ -339,7 +339,7 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
             out += &((dw + (part.expectation.conj() * step.coherent)) * &part.l_state);
 
             // - (dt / 2) L^\dagger L |\psi>
-            out -= &((0.5 * step.coherent) * &part.l_dagger_l_state);
+            out -= &(Complex::<f64>::from(0.5 * step.coherent) * &part.l_dagger_l_state);
         }
 
         out += &((diagonal_coherent + diagonal_stochastic) * parts.state);
@@ -348,7 +348,7 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
     #[inline]
     fn get_incoherent_steps_from_parts(
         parts: &Self::IncoherentParts<'_>,
-        incoherent_step: &[Complex<f64>],
+        incoherent_step: &[f64],
     ) -> Array1<Complex<f64>> {
         let mut out = Array1::zeros([parts.state.len()]);
         let mut diagonal = Complex::default();
@@ -357,7 +357,7 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
             // (L - <L>) * incoherent_step |\psi>
             diagonal -= step * part.expectation;
 
-            out += &(*step * &part.l_state);
+            out += &(Complex::<f64>::from(*step) * &part.l_state);
         }
 
         out += &(diagonal * parts.state);
@@ -366,23 +366,23 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
     #[inline]
     fn get_incoherent_step_from_part(
         part: &Self::IncoherentPart<'_>,
-        incoherent_step: Complex<f64>,
+        incoherent_step: f64,
     ) -> Array1<Complex<f64>> {
         // (L - <L>) * incoherent_step |\psi>
-        let mut out = incoherent_step * &part.stochastic.l_state;
+        let mut out = Complex::<f64>::from(incoherent_step) * &part.stochastic.l_state;
         out -= &((incoherent_step * part.stochastic.expectation) * part.state);
         out
     }
     #[inline]
     fn get_coherent_step_from_parts(
         parts: &Self::CoherentPart<'_>,
-        coherent_step: Complex<f64>,
+        coherent_step: f64,
     ) -> Array1<Complex<f64>> {
         let mut diagonal = Complex::default();
 
         let mut out = Complex {
-            re: coherent_step.im,
-            im: -coherent_step.re,
+            re: 0.0,
+            im: -coherent_step,
         } * &parts.hamiltonian;
 
         for part in &parts.stochastic {
@@ -395,7 +395,7 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
             // + coherent_step L <L^\dagger>  |\psi>
             out += &((part.expectation.conj() * coherent_step) * &part.l_state);
             // - (coherent_step / 2) L^\dagger L |\psi>
-            out -= &((0.5 * coherent_step) * &part.l_dagger_l_state);
+            out -= &(Complex::<f64>::from(0.5 * coherent_step) * &part.l_dagger_l_state);
         }
 
         out += &(diagonal * parts.state);
@@ -404,7 +404,7 @@ impl<H: Tensor, N: Noise> SDESystem for SSESystem<H, N> {
     #[inline]
     fn get_operators_from_parts(parts: &Self::Parts<'_>) -> SDEOperators {
         SDEOperators {
-            coherent: Self::get_coherent_step_from_parts(parts, Complex { re: 1f64, im: 0f64 }),
+            coherent: Self::get_coherent_step_from_parts(parts, 1f64),
             incoherent: parts
                 .stochastic
                 .iter()
