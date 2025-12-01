@@ -45,14 +45,13 @@ impl Stepper for ExplicitWeakStepper {
         let dw = &rng
             .sample_iter(ThreePointW::new(dt))
             .take(system.n_incoherent())
-            .map(|s| Complex { re: s, im: 0.0 })
             .collect::<Vec<_>>();
 
         let parts = system.get_parts(state, t);
         let euler_step = T::get_step_from_parts(
             &parts,
             &SDEStep {
-                coherent: Complex { re: dt, im: 0.0 },
+                coherent: dt,
                 incoherent: dw,
             },
         );
@@ -76,7 +75,7 @@ impl Stepper for ExplicitWeakStepper {
         // Where H_0 = Y_n + a(Y_n) dt + \sum_j b^j w_j is the result of a single euler step
         // H_0 = Y_n + a(Y_n) dt + \sum_j b^j w_j
         let mut step = (&operators.coherent
-            + system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, &(state + &euler_step), t))
+            + system.get_coherent_step(1.0, &(state + &euler_step), t))
             * (dt * 0.5);
 
         for k in 0..system.n_incoherent() {
@@ -303,19 +302,11 @@ impl Stepper for ExplicitWeakR5Stepper {
 
         let h_00 = &Self::get_h_0_state::<0>(state, [], [], &increment);
 
-        let h_00_coherent =
-            &system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, h_00, t + (Self::C0[0] * dt));
+        let h_00_coherent = &system.get_coherent_step(1.0, h_00, t + (Self::C0[0] * dt));
 
         // NOTE: here since H_k0 == The initial state, we don't pre-calculate them
         let h_k0_incoherent = &(0..system.n_incoherent())
-            .map(|idx| {
-                system.get_incoherent_step(
-                    idx,
-                    Complex { re: 1.0, im: 0.0 },
-                    state,
-                    t + (Self::C1[0] * dt),
-                )
-            })
+            .map(|idx| system.get_incoherent_step(idx, 1.0, state, t + (Self::C1[0] * dt)))
             .collect::<Vec<_>>();
 
         let h_01 = Self::get_h_0_state::<1>(state, [h_00_coherent], [h_k0_incoherent], &increment);
@@ -325,19 +316,11 @@ impl Stepper for ExplicitWeakR5Stepper {
         let h_hat_k1 =
             Self::get_h_hat_k_states::<1>(state, [h_00_coherent], [h_k0_incoherent], &increment);
 
-        let h_01_coherent =
-            &system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, &h_01, t + (Self::C0[1] * dt));
+        let h_01_coherent = &system.get_coherent_step(1.0, &h_01, t + (Self::C0[1] * dt));
 
         let h_k1_incoherent = &h_k1
             .enumerate()
-            .map(|(idx, s)| {
-                system.get_incoherent_step(
-                    idx,
-                    Complex { re: 1.0, im: 0.0 },
-                    &s,
-                    t + (Self::C1[1] * dt),
-                )
-            })
+            .map(|(idx, s)| system.get_incoherent_step(idx, 1.0, &s, t + (Self::C1[1] * dt)))
             .collect::<Vec<_>>();
 
         let h_02 = Self::get_h_0_state::<2>(
@@ -359,8 +342,7 @@ impl Stepper for ExplicitWeakR5Stepper {
             &increment,
         );
 
-        let h_02_coherent =
-            &system.get_coherent_step(Complex { re: 1.0, im: 0.0 }, &h_02, t + (Self::C0[2] * dt));
+        let h_02_coherent = &system.get_coherent_step(1.0, &h_02, t + (Self::C0[2] * dt));
 
         // Y_(n+1) = Y_(n) + \sum_i alpha_i a(t_n+c_i^0h_n, H_i^0)h_n
         let mut step = &(h_00_coherent * (Self::ALPHA[0] * dt))
@@ -388,14 +370,7 @@ impl Stepper for ExplicitWeakR5Stepper {
 
         let h_k2_incoherent = h_k2
             .enumerate()
-            .map(|(idx, s)| {
-                system.get_incoherent_step(
-                    idx,
-                    Complex { re: 1.0, im: 0.0 },
-                    &s,
-                    t + (Self::C1[2] * dt),
-                )
-            })
+            .map(|(idx, s)| system.get_incoherent_step(idx, 1.0, &s, t + (Self::C1[2] * dt)))
             .collect::<Vec<_>>();
 
         h_k2_incoherent
@@ -407,14 +382,8 @@ impl Stepper for ExplicitWeakR5Stepper {
                 step += &(b_k * factor);
             });
 
-        let h_hat_k0_incoherent = (0..increment.n_incoherent()).map(|idx| {
-            system.get_incoherent_step(
-                idx,
-                Complex { re: 1.0, im: 0.0 },
-                state,
-                t + (Self::C2[0] * dt),
-            )
-        });
+        let h_hat_k0_incoherent = (0..increment.n_incoherent())
+            .map(|idx| system.get_incoherent_step(idx, 1.0, state, t + (Self::C2[0] * dt)));
 
         // Y_(n+1) += \sum_i \sum_k b^k(t, H_hat_k) (i hat_k beta_i(3) + beta_i(4)*sqrt(dt))
         h_hat_k0_incoherent
@@ -424,14 +393,9 @@ impl Stepper for ExplicitWeakR5Stepper {
                 step += &(b_k * factor);
             });
 
-        let h_hat_k1_incoherent = h_hat_k1.enumerate().map(|(idx, s)| {
-            system.get_incoherent_step(
-                idx,
-                Complex { re: 1.0, im: 0.0 },
-                &s,
-                t + (Self::C2[1] * dt),
-            )
-        });
+        let h_hat_k1_incoherent = h_hat_k1
+            .enumerate()
+            .map(|(idx, s)| system.get_incoherent_step(idx, 1.0, &s, t + (Self::C2[1] * dt)));
 
         h_hat_k1_incoherent
             .zip(&increment.i_hat_noise)
@@ -440,14 +404,9 @@ impl Stepper for ExplicitWeakR5Stepper {
                 step += &(b_k * factor);
             });
 
-        let h_hat_k2_incoherent = h_hat_k2.enumerate().map(|(idx, s)| {
-            system.get_incoherent_step(
-                idx,
-                Complex { re: 1.0, im: 0.0 },
-                &s,
-                t + (Self::C2[2] * dt),
-            )
-        });
+        let h_hat_k2_incoherent = h_hat_k2
+            .enumerate()
+            .map(|(idx, s)| system.get_incoherent_step(idx, 1.0, &s, t + (Self::C2[2] * dt)));
 
         h_hat_k2_incoherent
             .zip(&increment.i_hat_noise)
@@ -458,12 +417,8 @@ impl Stepper for ExplicitWeakR5Stepper {
 
         let euler_step = system.get_step(
             &SDEStep {
-                coherent: Complex { re: dt, im: 0.0 },
-                incoherent: &increment
-                    .i_hat_noise
-                    .into_iter()
-                    .map(|i| Complex { re: i, im: 0.0 })
-                    .collect(),
+                coherent: dt,
+                incoherent: &increment.i_hat_noise.into_iter().collect(),
             },
             state,
             t,

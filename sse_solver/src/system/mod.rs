@@ -1,11 +1,12 @@
 use ndarray::Array1;
 use num_complex::Complex;
+pub mod harmonic_langevin;
 pub mod simple_stochastic;
 pub mod sse;
 
 pub struct SDEStep<'a> {
-    pub coherent: Complex<f64>,
-    pub incoherent: &'a Vec<Complex<f64>>,
+    pub coherent: f64,
+    pub incoherent: &'a Vec<f64>,
 }
 
 pub struct SDEOperators {
@@ -67,7 +68,7 @@ pub trait SDESystem {
     #[inline]
     fn get_incoherent_steps(
         &self,
-        steps: &[Complex<f64>],
+        steps: &[f64],
         state: &Array1<Complex<f64>>,
         t: f64,
     ) -> Array1<Complex<f64>> {
@@ -78,7 +79,7 @@ pub trait SDESystem {
     /// Get the incoherent steps `\sum_j steps[j] * b^j(s, X_s)`
     fn get_incoherent_steps_from_parts(
         parts: &Self::IncoherentParts<'_>,
-        steps: &[Complex<f64>],
+        steps: &[f64],
     ) -> Array1<Complex<f64>>;
 
     /// Get the parts used to calculate an SDE step.
@@ -95,7 +96,7 @@ pub trait SDESystem {
     fn get_incoherent_step(
         &self,
         idx: usize,
-        step: Complex<f64>,
+        step: f64,
         state: &Array1<Complex<f64>>,
         t: f64,
     ) -> Array1<Complex<f64>> {
@@ -108,7 +109,7 @@ pub trait SDESystem {
     /// `step * b^j(s, X_s)`
     fn get_incoherent_step_from_part(
         part: &Self::IncoherentPart<'_>,
-        step: Complex<f64>,
+        step: f64,
     ) -> Array1<Complex<f64>>;
 
     /// Type used to store a cache of 'Parts' required to calculate a SDE step involving only the incoherent term `a(s,X_s)`.
@@ -124,14 +125,14 @@ pub trait SDESystem {
     /// Get the coherent step `a(s,X_s)` from parts
     fn get_coherent_step_from_parts(
         parts: &Self::CoherentPart<'_>,
-        step: Complex<f64>,
+        step: f64,
     ) -> Array1<Complex<f64>>;
 
     /// Get the coherent step, `step * a(s,X_s)`
     #[inline]
     fn get_coherent_step(
         &self,
-        step: Complex<f64>,
+        step: f64,
         state: &Array1<Complex<f64>>,
         t: f64,
     ) -> Array1<Complex<f64>> {
