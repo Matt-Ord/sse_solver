@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from ._solver import (
     BandedData,
+    HarmonicLangevinSystemParameters,
     SimulationConfig,
     SplitOperatorData,
+    solve_harmonic_langevin,
+    solve_simple_stochastic,
     solve_sse,
     solve_sse_banded,
     solve_sse_measured_split_operator,
@@ -40,9 +43,13 @@ def solve_sse_split_operator(
 
 __all__ = [
     "BandedData",
+    "HarmonicLangevinSystemParameters",
     "SSEMethod",
     "SimulationConfig",
     "SplitOperatorData",
+    "solve_harmonic_langevin",
+    "solve_simple_stochastic",
     "solve_sse",
     "solve_sse_banded",
+    "solve_sse_split_operator",
 ]
