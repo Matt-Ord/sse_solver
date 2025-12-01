@@ -1,5 +1,6 @@
 use ndarray::Array1;
 use num_complex::Complex;
+pub mod simple_stochastic;
 pub mod sse;
 
 pub struct SDEStep<'a> {

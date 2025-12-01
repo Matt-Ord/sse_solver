@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Self
 
 from ._sse_method import SSEMethod
@@ -27,14 +28,20 @@ def solve_sse_measured_split_operator(
     measurement_operators: list[SplitOperatorData],
     config: SimulationConfig,
 ) -> list[complex]: ...
+def solve_simple_stochastic(
+    initial_state: list[complex],
+    coherent: Callable[[float, list[complex]], list[complex]],
+    incoherent: list[Callable[[float, list[complex]], list[complex]]],
+    config: SimulationConfig,
+) -> list[complex]: ...
 
 class SimulationConfig:
-    def __init__[_A: float | None, _B: float | None](  # noqa: PLR0913
+    def __init__[A: float | None, B: float | None](
         self: SimulationConfig,
         *,
         times: list[float],
         dt: float,
-        delta: tuple[_A, float, _B] | None = None,
+        delta: tuple[A, float, B] | None = None,
         n_trajectories: int = 1,
         n_realizations: int = 1,
         method: SSEMethod,
