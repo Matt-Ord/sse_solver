@@ -1,21 +1,25 @@
+use std::sync::Arc;
 use std::thread;
 
 use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex;
+use pyo3::IntoPyObject;
+use pyo3::types::PyList;
 use pyo3::{exceptions::PyAssertionError, prelude::*};
 use sse_solver::solvers::{
     DynamicErrorStepSolver, FixedStepSolver, Measurement, OperatorMeasurement, Solver,
     StateMeasurement, Stepper,
 };
 use sse_solver::sparse::PlannedSplitScatteringArray;
+use sse_solver::system::simple_stochastic::{SimpleStochastic, SimpleStochasticFn};
 use sse_solver::{
     solvers::{
         EulerStepper, MilstenStepper, NormalizedStepper, Order2ExplicitWeakR5Stepper,
         Order2ExplicitWeakStepper,
     },
     sparse::{BandedArray, SplitScatteringArray},
-    system::sse::{FullNoise, SSESystem},
     system::SDESystem,
+    system::sse::{FullNoise, SSESystem},
 };
 
 #[cfg(feature = "localized")]
@@ -492,6 +496,53 @@ fn solve_sse_bra_ket(
         .cloned()
         .collect())
 }
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+/// Solve a simple stochastic system defined by coherent and incoherent functions
+fn solve_simple_stochastic(
+    initial_state: Vec<Complex<f64>>,
+    coherent: Py<PyAny>,
+    incoherent: Vec<Py<PyAny>>,
+    config: PyRef<SimulationConfig>,
+) -> PyResult<Vec<Complex<f64>>> {
+    let system = SimpleStochastic {
+        coherent: Arc::new(move |t: f64, state: &Array1<Complex<f64>>| {
+            Python::attach(|py| {
+                let args = (
+                    t.into_pyobject(py).unwrap(),
+                    PyList::new(py, state.iter()).unwrap(),
+                );
+                let result = coherent.call1(py, args).unwrap();
+                let array: Vec<Complex<f64>> = result.extract(py).unwrap();
+                Array1::from(array)
+            })
+        }),
+        incoherent: incoherent
+            .into_iter()
+            .map(|f| {
+                Arc::new(move |t: f64, state: &Array1<Complex<f64>>| {
+                    Python::attach(|py| {
+                        let args = (
+                            t.into_pyobject(py).unwrap(),
+                            PyList::new(py, state.iter()).unwrap(),
+                        );
+                        let result = f.call1(py, args).unwrap();
+                        let array: Vec<Complex<f64>> = result.extract(py).unwrap();
+                        Array1::from(array)
+                    })
+                }) as Arc<SimpleStochasticFn>
+            })
+            .collect::<Vec<_>>(),
+    };
+
+    let initial_state = Array1::from(initial_state);
+    Ok(config
+        .simulate_system(&initial_state, &system, &StateMeasurement {})
+        .iter()
+        .flat_map(|d| d.iter())
+        .cloned()
+        .collect())
+}
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -501,6 +552,7 @@ fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_sse_banded, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_split_operator, m)?)?;
     m.add_function(wrap_pyfunction!(solve_sse_measured_split_operator, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_simple_stochastic, m)?)?;
     m.add_class::<SimulationConfig>()?;
     m.add_class::<BandedData>()?;
     m.add_class::<SplitOperatorData>()?;
