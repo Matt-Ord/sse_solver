@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::thread;
 
 use ndarray::{Array1, Array2, Array3, array};
@@ -12,7 +11,7 @@ use sse_solver::solvers::{
 };
 use sse_solver::sparse::PlannedSplitScatteringArray;
 use sse_solver::system::harmonic_langevin::{
-    HarmonicLangevinParameters, get_harmonic_langevin_system,
+    HarmonicLangevinParameters, get_harmonic_langevin_system, get_harmonic_quantum_langevin_system,
 };
 use sse_solver::system::simple_stochastic::{SimpleStochasticFn, SimpleStochasticSDESystem};
 use sse_solver::{
@@ -528,7 +527,7 @@ fn solve_simple_stochastic(
     config: PyRef<SimulationConfig>,
 ) -> PyResult<Vec<Complex<f64>>> {
     let system = SimpleStochasticSDESystem {
-        coherent: Arc::new(move |t: f64, state: &Array1<Complex<f64>>| {
+        coherent: Box::new(move |t: f64, state: &Array1<Complex<f64>>| {
             Python::attach(|py| {
                 let args = (
                     t.into_pyobject(py).unwrap(),
@@ -542,7 +541,7 @@ fn solve_simple_stochastic(
         incoherent: incoherent
             .into_iter()
             .map(|f| {
-                Arc::new(move |t: f64, state: &Array1<Complex<f64>>| {
+                Box::new(move |t: f64, state: &Array1<Complex<f64>>| {
                     Python::attach(|py| {
                         let args = (
                             t.into_pyobject(py).unwrap(),
@@ -552,7 +551,7 @@ fn solve_simple_stochastic(
                         let array: Vec<Complex<f64>> = result.extract(py).unwrap();
                         Array1::from(array)
                     })
-                }) as Arc<SimpleStochasticFn>
+                }) as Box<SimpleStochasticFn>
             })
             .collect::<Vec<_>>(),
     };
@@ -619,6 +618,28 @@ fn solve_harmonic_langevin(
         .collect())
 }
 
+#[pyfunction]
+fn solve_harmonic_quantum_langevin(
+    initial_state: (Complex<f64>, Complex<f64>),
+    params: PyRef<HarmonicLangevinSystemParameters>,
+    config: PyRef<SimulationConfig>,
+) -> PyResult<Vec<Complex<f64>>> {
+    let system = get_harmonic_quantum_langevin_system(&HarmonicLangevinParameters {
+        dimensionless_mass: params.dimensionless_mass,
+        dimensionless_omega: params.dimensionless_omega,
+        dimensionless_lambda: params.dimensionless_lambda,
+        kbt_div_hbar: params.kbt_div_hbar,
+    });
+
+    let initial_state = array![initial_state.0, initial_state.1];
+    Ok(config
+        .simulate_system(&initial_state, &system, &StateMeasurement {})
+        .iter()
+        .flat_map(|d| d.iter())
+        .cloned()
+        .collect())
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -629,6 +650,7 @@ fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_sse_measured_split_operator, m)?)?;
     m.add_function(wrap_pyfunction!(solve_simple_stochastic, m)?)?;
     m.add_function(wrap_pyfunction!(solve_harmonic_langevin, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_harmonic_quantum_langevin, m)?)?;
     m.add_class::<SimulationConfig>()?;
     m.add_class::<BandedData>()?;
     m.add_class::<SplitOperatorData>()?;
