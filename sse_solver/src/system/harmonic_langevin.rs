@@ -34,7 +34,7 @@ pub fn get_harmonic_langevin_system(
         re: 4.0 * params.dimensionless_mass.square() * prefactor,
         im: -2.0 * params.dimensionless_mass * params.dimensionless_lambda * prefactor,
     };
-    let force_prefactor = (2.0 * prefactor * params.dimensionless_lambda).sqrt();
+    let force_prefactor = (4.0 * prefactor * params.dimensionless_lambda).sqrt();
     SimpleStochasticSDESystem {
         coherent: Arc::new(move |_t, state| {
             let alpha = state[0];

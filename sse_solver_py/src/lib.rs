@@ -363,6 +363,7 @@ fn solve_sse_banded(
         .cloned()
         .collect())
 }
+
 #[pyclass]
 #[derive(Clone)]
 struct SplitOperatorData {
@@ -516,6 +517,7 @@ fn solve_sse_bra_ket(
         .cloned()
         .collect())
 }
+
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 /// Solve a simple stochastic system defined by coherent and incoherent functions
@@ -575,6 +577,7 @@ struct HarmonicLangevinSystemParameters {
     #[pyo3(get, set)]
     kbt_div_hbar: f64,
 }
+
 #[pymethods]
 impl HarmonicLangevinSystemParameters {
     #[new]
@@ -593,6 +596,7 @@ impl HarmonicLangevinSystemParameters {
         }
     }
 }
+
 #[pyfunction]
 fn solve_harmonic_langevin(
     initial_state: Complex<f64>,
