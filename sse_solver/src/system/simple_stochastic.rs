@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use ndarray::Array1;
 use num_complex::Complex;
 
@@ -9,8 +7,8 @@ pub type SimpleStochasticFn =
     dyn Fn(f64, &Array1<Complex<f64>>) -> Array1<Complex<f64>> + Send + Sync;
 /// A Simple Stochastic System where the coherent and incoherent parts are given by functions
 pub struct SimpleStochasticSDESystem {
-    pub coherent: Arc<SimpleStochasticFn>,
-    pub incoherent: Vec<Arc<SimpleStochasticFn>>,
+    pub coherent: Box<SimpleStochasticFn>,
+    pub incoherent: Vec<Box<SimpleStochasticFn>>,
 }
 
 pub struct SimpleStochasticParts {
