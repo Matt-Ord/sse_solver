@@ -3,7 +3,9 @@
     "version": "0.2",
     "language": "en",
     "words": [
-        "eigenstates"
+        "eigenstates",
+        "langevin",
+        "calderia"
     ],
     "ignoreWords": [
         "ndarray",
@@ -24,7 +26,11 @@
         "Ctarget",
         "maturin",
         "pytest",
-        "rustc"
+        "rustc",
+        "rfft",
+        "infty",
+        "powu",
+        "pyobject"
     ],
     "flagWords": [
         "hte",

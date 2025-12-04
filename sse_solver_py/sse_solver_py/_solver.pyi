@@ -111,8 +111,40 @@ def solve_harmonic_langevin(
     params: HarmonicLangevinSystemParameters,
     config: SimulationConfig,
 ) -> list[complex]: ...
-def solve_harmonic_quantum_langevin(
+def solve_harmonic_stable_quantum_langevin(
     initial_state: tuple[complex, complex],
     params: HarmonicLangevinSystemParameters,
+    config: SimulationConfig,
+) -> list[complex]: ...
+
+class PeriodicLangevinSystemParameters:
+    def __init__(
+        self,
+        *,
+        dimensionless_mass: float,
+        dimensionless_potential: list[complex],
+        dk_times_lengthscale: float,
+        dimensionless_lambda: float,
+        kbt_div_hbar: float,
+    ) -> None: ...
+    @property
+    def dimensionless_mass(self: Self) -> float: ...
+    @property
+    def dimensionless_potential(self: Self) -> list[complex]: ...
+    @property
+    def dk_times_lengthscale(self: Self) -> float: ...
+    @property
+    def dimensionless_lambda(self: Self) -> float: ...
+    @property
+    def kbt_div_hbar(self: Self) -> float: ...
+
+def solve_periodic_langevin(
+    initial_state: complex,
+    params: PeriodicLangevinSystemParameters,
+    config: SimulationConfig,
+) -> list[complex]: ...
+def solve_periodic_stable_quantum_langevin(
+    initial_state: tuple[complex, complex],
+    params: PeriodicLangevinSystemParameters,
     config: SimulationConfig,
 ) -> list[complex]: ...
