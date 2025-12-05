@@ -222,15 +222,16 @@ fn get_ratio_derivative<T: LangevinParameters>(
     ratio: Complex<f64>,
 ) -> Complex<f64> {
     let prefactor = -0.125 * params.kbt_div_hbar();
-    let r2 = ratio.square() * (params.dimensionless_lambda() + Complex { re: 0.0, im: 8.0 });
-    let r1 = ratio * (4.0 * params.dimensionless_lambda());
+    let r2 = params.dimensionless_lambda() + Complex { re: 0.0, im: 8.0 };
+    let r1 = 4.0 * params.dimensionless_lambda();
+
     let c2 = params.get_potential_coefficient(2, alpha, ratio);
     let r0 = -4.0 * params.dimensionless_lambda()
         + c2 * Complex {
             re: 0.0,
             im: -8.0 * params.dimensionless_mass(),
         };
-    prefactor * (r2 + r1 + r0)
+    prefactor * ((ratio * ratio) * r2 + ratio * r1 + r0)
 }
 
 /// Create a `SimpleStochasticSDESystem` representing a particle
