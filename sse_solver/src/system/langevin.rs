@@ -221,7 +221,7 @@ fn get_ratio_derivative<T: LangevinParameters>(
     alpha: Complex<f64>,
     ratio: Complex<f64>,
 ) -> Complex<f64> {
-    let prefactor = params.kbt_div_hbar() * 0.125;
+    let prefactor = -0.125 * params.kbt_div_hbar();
     let r2 = ratio.square() * (params.dimensionless_lambda() + Complex { re: 0.0, im: 8.0 });
     let r1 = ratio * (4.0 * params.dimensionless_lambda());
     let c2 = params.get_potential_coefficient(2, alpha, ratio);
