@@ -39,9 +39,9 @@ impl Stepper for EulerStepper {
     }
 }
 
-pub struct MilstenStepper {}
+pub struct MilsteinStepper {}
 
-impl Stepper for MilstenStepper {
+impl Stepper for MilsteinStepper {
     fn step<T: SDESystem>(
         &self,
         state: &Array1<Complex<f64>>,
@@ -49,7 +49,7 @@ impl Stepper for MilstenStepper {
         t: f64,
         dt: f64,
     ) -> (Array1<Complex<f64>>, Option<f64>) {
-        // The explicit milsten scheme for commuting noise
+        // The explicit Milstein scheme for commuting noise
         // Y_k(n+1) = Y_k(n) + \underline{a}_k dt + \frac{1}{2} \sum_j (b^j(t, \bar{Y}(n))_k + b^j(t, Y(n))_k)dW^j
         // where dW are normalized gaussian random variables,  <dW_k* dW_k'> = dt
 
