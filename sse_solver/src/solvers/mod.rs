@@ -5,7 +5,7 @@ use num_complex::Complex;
 use crate::system::SDESystem;
 
 mod order_1;
-pub use order_1::{EulerStepper, MilstenStepper};
+pub use order_1::{EulerStepper, MilsteinStepper};
 
 mod order_2;
 pub use order_2::{

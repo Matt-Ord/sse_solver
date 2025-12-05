@@ -3,7 +3,7 @@ from typing import Literal
 SSEMethod = Literal[
     "Euler",
     "NormalizedEuler",
-    "Milsten",
+    "Milstein",
     "Order2ExplicitWeak",
     "NormalizedOrder2ExplicitWeak",
     "Order2ExplicitWeakR5",
