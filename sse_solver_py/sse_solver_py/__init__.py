@@ -3,6 +3,7 @@ from __future__ import annotations
 from ._solver import (
     BandedData,
     HarmonicLangevinSystemParameters,
+    PeriodicLangevinSystemParameters,
     SimulationConfig,
     SplitOperatorData,
     solve_harmonic_langevin,
@@ -47,6 +48,7 @@ def solve_sse_split_operator(
 __all__ = [
     "BandedData",
     "HarmonicLangevinSystemParameters",
+    "PeriodicLangevinSystemParameters",
     "SSEMethod",
     "SimulationConfig",
     "SplitOperatorData",
