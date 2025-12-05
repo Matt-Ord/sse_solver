@@ -10,7 +10,7 @@ use sse_solver::solvers::{
     StateMeasurement, Stepper,
 };
 use sse_solver::sparse::PlannedSplitScatteringArray;
-use sse_solver::system::harmonic_langevin::{
+use sse_solver::system::langevin::{
     HarmonicLangevinParameters, PeriodicLangevinParameters, get_langevin_system,
     get_stable_quantum_langevin_system,
 };
