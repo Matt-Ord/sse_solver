@@ -46,7 +46,7 @@ impl LangevinParameters for HarmonicLangevinParameters {
         _ratio: Complex<f64>,
     ) -> f64 {
         if idx == 1 {
-            return self.dimensionless_omega.square() * alpha.re / (8.0 * self.dimensionless_mass);
+            return self.dimensionless_omega.square() * alpha.re / (2.0 * self.dimensionless_mass);
         }
         if idx == 2 {
             return self.dimensionless_omega.square() / (4.0 * self.dimensionless_mass);
@@ -154,7 +154,7 @@ pub fn get_langevin_system<T: LangevinParameters + Clone + Send + Sync + 'static
             let alpha = state[0];
 
             let c1 = params_coherent.get_classical_potential_coefficient(alpha);
-            let potential_factor = Complex { im: 0.0, re: -c1 } * params_coherent.kbt_div_hbar();
+            let potential_factor = Complex { re: 0.0, im: -c1 } * params_coherent.kbt_div_hbar();
 
             array![alpha_im_factor * alpha.im + potential_factor]
         }),
@@ -255,7 +255,7 @@ pub fn get_stable_quantum_langevin_system<T: LangevinParameters + Clone + Send +
             let ratio = state[1];
 
             let c1 = params_coherent.get_potential_coefficient(1, alpha, ratio);
-            let potential_factor = Complex { im: 0.0, re: -c1 } * params_coherent.kbt_div_hbar();
+            let potential_factor = Complex { re: 0.0, im: -c1 } * params_coherent.kbt_div_hbar();
 
             array![
                 alpha_im_factor * alpha.im + potential_factor,

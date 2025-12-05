@@ -1,6 +1,6 @@
 use ndarray::Array1;
 use num_complex::Complex;
-pub mod harmonic_langevin;
+pub mod langevin;
 pub mod simple_stochastic;
 pub mod sse;
 
