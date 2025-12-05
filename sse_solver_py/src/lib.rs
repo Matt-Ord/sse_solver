@@ -17,7 +17,7 @@ use sse_solver::system::harmonic_langevin::{
 use sse_solver::system::simple_stochastic::{SimpleStochasticFn, SimpleStochasticSDESystem};
 use sse_solver::{
     solvers::{
-        EulerStepper, MilstenStepper, NormalizedStepper, Order2ExplicitWeakR5Stepper,
+        EulerStepper, MilsteinStepper, NormalizedStepper, Order2ExplicitWeakR5Stepper,
         Order2ExplicitWeakStepper,
     },
     sparse::{BandedArray, SplitScatteringArray},
@@ -32,8 +32,8 @@ use sse_solver::solvers::LocalizedStepper;
 enum SSEMethod {
     Euler,
     NormalizedEuler,
-    Milsten,
-    NormalizedMilsten,
+    Milstein,
+    NormalizedMilstein,
     Order2ExplicitWeak,
     NormalizedOrder2ExplicitWeak,
     Order2ExplicitWeakR5,
@@ -70,8 +70,8 @@ impl SimulationConfig {
         let method_enum = match method {
             "Euler" => SSEMethod::Euler,
             "NormalizedEuler" => SSEMethod::NormalizedEuler,
-            "Milsten" => SSEMethod::Milsten,
-            "NormalizedMilsten" => SSEMethod::NormalizedMilsten,
+            "Milstein" => SSEMethod::Milstein,
+            "NormalizedMilstein" => SSEMethod::NormalizedMilstein,
             "Order2ExplicitWeak" => SSEMethod::Order2ExplicitWeak,
             "NormalizedOrder2ExplicitWeak" => SSEMethod::NormalizedOrder2ExplicitWeak,
             "Order2ExplicitWeakR5" => SSEMethod::Order2ExplicitWeakR5,
@@ -93,8 +93,8 @@ impl SimulationConfig {
         match self.method {
             SSEMethod::Euler => "Euler".to_owned(),
             SSEMethod::NormalizedEuler => "NormalizedEuler".to_owned(),
-            SSEMethod::Milsten => "Milsten".to_owned(),
-            SSEMethod::NormalizedMilsten => "NormalizedMilsten".to_owned(),
+            SSEMethod::Milstein => "Milstein".to_owned(),
+            SSEMethod::NormalizedMilstein => "NormalizedMilstein".to_owned(),
             SSEMethod::Order2ExplicitWeak => "Order2ExplicitWeak".to_owned(),
             SSEMethod::NormalizedOrder2ExplicitWeak => "NormalizedOrder2ExplicitWeak".to_owned(),
             SSEMethod::Order2ExplicitWeakR5 => "Order2ExplicitWeakR5".to_owned(),
@@ -108,8 +108,8 @@ impl SimulationConfig {
 enum DynStepper {
     Euler(EulerStepper),
     NormalizedEuler(NormalizedStepper<EulerStepper>),
-    Milsten(MilstenStepper),
-    NormalizedMilsten(NormalizedStepper<MilstenStepper>),
+    Milstein(MilsteinStepper),
+    NormalizedMilstein(NormalizedStepper<MilsteinStepper>),
     Order2ExplicitWeak(Order2ExplicitWeakStepper),
     NormalizedOrder2ExplicitWeak(NormalizedStepper<Order2ExplicitWeakStepper>),
     Order2ExplicitWeakR5(Order2ExplicitWeakR5Stepper),
@@ -127,8 +127,8 @@ impl Stepper for DynStepper {
         match self {
             DynStepper::Euler(s) => s.step(state, system, t, dt),
             DynStepper::NormalizedEuler(s) => s.step(state, system, t, dt),
-            DynStepper::Milsten(s) => s.step(state, system, t, dt),
-            DynStepper::NormalizedMilsten(s) => s.step(state, system, t, dt),
+            DynStepper::Milstein(s) => s.step(state, system, t, dt),
+            DynStepper::NormalizedMilstein(s) => s.step(state, system, t, dt),
             DynStepper::Order2ExplicitWeak(s) => s.step(state, system, t, dt),
             DynStepper::NormalizedOrder2ExplicitWeak(s) => s.step(state, system, t, dt),
             DynStepper::Order2ExplicitWeakR5(s) => s.step(state, system, t, dt),
@@ -145,9 +145,9 @@ impl SimulationConfig {
                 inner: EulerStepper::default(),
                 calculate_error: true,
             }),
-            SSEMethod::Milsten => DynStepper::Milsten(MilstenStepper {}),
-            SSEMethod::NormalizedMilsten => DynStepper::NormalizedMilsten(NormalizedStepper {
-                inner: MilstenStepper {},
+            SSEMethod::Milstein => DynStepper::Milstein(MilsteinStepper {}),
+            SSEMethod::NormalizedMilstein => DynStepper::NormalizedMilstein(NormalizedStepper {
+                inner: MilsteinStepper {},
                 calculate_error: true,
             }),
             SSEMethod::Order2ExplicitWeak => {
