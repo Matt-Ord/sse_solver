@@ -116,6 +116,11 @@ def solve_harmonic_stable_quantum_langevin(
     params: HarmonicLangevinSystemParameters,
     config: SimulationConfig,
 ) -> list[complex]: ...
+def solve_harmonic_quantum_langevin(
+    initial_state: tuple[complex, complex, list[complex]],
+    params: HarmonicLangevinSystemParameters,
+    config: SimulationConfig,
+) -> list[complex]: ...
 
 class PeriodicLangevinSystemParameters:
     def __init__(
@@ -145,6 +150,11 @@ def solve_periodic_langevin(
 ) -> list[complex]: ...
 def solve_periodic_stable_quantum_langevin(
     initial_state: tuple[complex, complex],
+    params: PeriodicLangevinSystemParameters,
+    config: SimulationConfig,
+) -> list[complex]: ...
+def solve_periodic_quantum_langevin(
+    initial_state: tuple[complex, complex, list[complex]],
     params: PeriodicLangevinSystemParameters,
     config: SimulationConfig,
 ) -> list[complex]: ...

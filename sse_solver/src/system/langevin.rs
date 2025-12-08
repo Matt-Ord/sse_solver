@@ -1,4 +1,6 @@
-use ndarray::{Array1, array};
+use std::iter::successors;
+
+use ndarray::{Array1, ArrayView1, ArrayViewMut1, array, s};
 use ndarray_linalg::Scalar;
 use num_complex::Complex;
 
@@ -191,11 +193,26 @@ fn get_quantum_im_force_prefactor<T: LangevinParameters>(
     }
 }
 
+/// Apply the lowering operator to the state
+fn get_lowered_state(psi: &ArrayView1<Complex<f64>>) -> Array1<Complex<f64>> {
+    let ns = psi.len();
+    let mut out = Array1::zeros(ns);
+    for n in 1..ns {
+        #[allow(clippy::cast_precision_loss)]
+        let factor = (n as f64).sqrt();
+        out[n - 1] = psi[n] * factor;
+    }
+    out
+}
+
 fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 'static>(
     params: &T,
 ) -> Vec<Box<SimpleStochasticFn>> {
     let params0 = params.clone();
     let params1 = params.clone();
+    let random_scatter_prefactor = (params.kbt_div_hbar() * params.dimensionless_lambda()
+        / (8.0 * params.dimensionless_mass()))
+    .sqrt();
     vec![
         Box::new(move |_t, state| {
             let ratio = state[1];
@@ -203,6 +220,16 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
 
             let mut out = Array1::zeros(state.len());
             out[0] = re_prefactor;
+
+            let occupation = state.slice(s![2..]);
+            let a_operator = get_lowered_state(&occupation);
+            let mu_plus_nu = get_mu_plus_nu(ratio, params0.dimensionless_mass());
+
+            let re_scatter_prefactor =
+                random_scatter_prefactor * mu_plus_nu.conj() * (2.0 + ratio.conj());
+
+            out.slice_mut(s![2..])
+                .assign(&(a_operator * re_scatter_prefactor));
             out
         }),
         Box::new(move |_t, state| {
@@ -211,6 +238,16 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
 
             let mut out = Array1::zeros(state.len());
             out[0] = im_prefactor;
+
+            let occupation = state.slice(s![2..]);
+            let a_operator = get_lowered_state(&occupation);
+            let mu_plus_nu = get_mu_plus_nu(ratio, params1.dimensionless_mass());
+
+            let im_scatter_prefactor =
+                random_scatter_prefactor * mu_plus_nu.conj() * (2.0 - ratio.conj());
+
+            out.slice_mut(s![2..])
+                .assign(&(a_operator * im_scatter_prefactor));
             out
         }),
     ]
@@ -255,13 +292,201 @@ pub fn get_stable_quantum_langevin_system<T: LangevinParameters + Clone + Send +
             let alpha = state[0];
             let ratio = state[1];
 
+            let mut out = Array1::zeros(state.len());
+
+            let c1 = params_coherent.get_potential_coefficient(1, alpha, ratio);
+            let potential_factor = Complex { re: 0.0, im: -c1 } * params_coherent.kbt_div_hbar();
+            out[0] = alpha_im_factor * alpha.im + potential_factor;
+            out[1] = get_ratio_derivative(&params_coherent, alpha, ratio);
+
+            out
+        }),
+        incoherent: build_quantum_incoherent_terms(&params_incoherent),
+    }
+}
+
+struct OperatorCache {
+    sqrt_factors: Vec<f64>,
+    inv_factors: Vec<f64>,
+}
+
+impl OperatorCache {
+    fn build(size: usize) -> Self {
+        Self {
+            sqrt_factors: successors(Some(1.0f64), |&prev| {
+                #[allow(clippy::cast_precision_loss)]
+                Some((prev * (size as f64 - 1.0)).sqrt())
+            })
+            .take(size)
+            .collect(),
+            #[allow(clippy::cast_precision_loss)]
+            inv_factors: successors(Some(1.0f64), |&prev| Some(prev / (size as f64 - 1.0)))
+                .take(size)
+                .collect(),
+        }
+    }
+}
+
+fn get_mu_plus_nu(ratio: Complex<f64>, dimensionless_m: f64) -> Complex<f64> {
+    let m_plus_r = dimensionless_m + ratio;
+    let mu_plus_mu_sq = 2.0 * dimensionless_m * m_plus_r.conj() / (ratio.re * m_plus_r);
+    mu_plus_mu_sq.sqrt()
+}
+
+fn add_potential_scattering<T: LangevinParameters>(
+    psi: &ArrayView1<Complex<f64>>,
+    alpha: Complex<f64>,
+    ratio: Complex<f64>,
+    params: &T,
+    cache: &OperatorCache,
+    psi_out: &mut ArrayViewMut1<Complex<f64>>,
+) {
+    let ns = psi.len();
+
+    let mu_plus_nu = get_mu_plus_nu(ratio, params.dimensionless_mass());
+
+    let mut alpha_dist = Vec::with_capacity(ns);
+    alpha_dist.push(Complex::new(1.0, 0.0));
+    for i in 1..ns {
+        #[allow(clippy::cast_precision_loss)]
+        let next_alpha = unsafe { alpha_dist.last().unwrap_unchecked() } * mu_plus_nu / (i as f64);
+        alpha_dist.push(next_alpha);
+    }
+
+    // To save on calculating c_val, we do this in an outer loop over L
+    for l in 3..(2 * ns - 1) {
+        #[allow(clippy::cast_possible_truncation)]
+        let c_val = params.get_potential_coefficient(l as u32, alpha, ratio);
+
+        if c_val < 1e-12 {
+            continue;
+        }
+
+        // Determine valid range for 'p' such that p + q = l
+        // Constraints: 0 <= p < ns  AND  0 <= q < ns
+        // Since q = l - p, implies: p > l - ns
+        let p_start = if l >= ns { l - ns + 1 } else { 0 };
+        let p_end = if l < ns { l } else { ns - 1 };
+
+        // 3. Loop 'p': Decompose L into p + q
+        for p in p_start..=p_end {
+            let q = l - p;
+
+            // Pre-calculate the static part of the term
+            // Term = C_L * (alpha^p / p!) * (beta^q / q!)
+            let factor_static = c_val * alpha_dist[p] * alpha_dist[q].conj();
+            if factor_static.norm_sqr() < 1e-24 {
+                continue;
+            }
+
+            // 4. Inner Loop 'k': The "Shift"
+            // We apply this term to the vectors.
+            // Output index m = p + k
+            // Input index  n = q + k
+            // Limit: m < ns AND n < ns => k < ns - max(p, q)
+            let max_pq = std::cmp::max(p, q);
+            let k_limit = ns - 1 - max_pq;
+
+            for k in 0..=k_limit {
+                let m = p + k; // Output index
+                let n = q + k; // Input index
+
+                // Accumulate: psi_out[m] += factor * (sqrt(m!n!)/k!) * psi[n]
+
+                let weight = cache.sqrt_factors[m] * cache.sqrt_factors[n] * cache.inv_factors[k];
+
+                let contribution = factor_static * weight * psi[n];
+
+                psi_out[m] += contribution;
+            }
+        }
+    }
+}
+
+/// Create a `SimpleStochasticSDESystem` representing a particle
+/// in the most stable squeezed state
+/// in a harmonic potential with Calderia-Leggett quantum Langevin dynamics.
+#[must_use]
+pub fn get_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync + 'static>(
+    params: &T,
+    size: usize,
+) -> SimpleStochasticSDESystem {
+    let prefactor = params.kbt_div_hbar() / (2.0 * params.dimensionless_mass());
+    let alpha_im_factor = Complex {
+        re: 4.0 * params.dimensionless_mass().square() * prefactor,
+        im: -2.0 * params.dimensionless_mass() * params.dimensionless_lambda() * prefactor,
+    };
+
+    let params_coherent = params.clone();
+    let params_incoherent = params.clone();
+    let operator_cache = OperatorCache::build(size);
+    let coherent_scatter_prefactor = (params.kbt_div_hbar() * params.dimensionless_lambda())
+        / (4.0 * params.dimensionless_mass());
+
+    SimpleStochasticSDESystem {
+        coherent: Box::new(move |_t, state| {
+            let alpha = state[0];
+            let ratio = state[1];
+            let occupation = state.slice(s![2..]);
+
+            let mut out = Array1::zeros(state.len());
+
             let c1 = params_coherent.get_potential_coefficient(1, alpha, ratio);
             let potential_factor = Complex { re: 0.0, im: -c1 } * params_coherent.kbt_div_hbar();
 
-            array![
-                alpha_im_factor * alpha.im + potential_factor,
-                get_ratio_derivative(&params_coherent, alpha, ratio),
-            ]
+            out[0] = alpha_im_factor * alpha.im + potential_factor;
+
+            // We also have an additional contribution to d alpha/dt if the state
+            // is not in the ground state
+            let a_state = get_lowered_state(&occupation);
+            let expect_a = a_state
+                .iter()
+                .zip(occupation.iter())
+                .map(|(a_val, psi_val)| a_val.conj() * psi_val)
+                .sum::<Complex<f64>>();
+            let ratio_norm_sqr = ratio.norm_sqr();
+            let mu_plus_nu = get_mu_plus_nu(ratio, params_coherent.dimensionless_mass());
+            let scaled_expect_a = expect_a * mu_plus_nu;
+
+            let expect_l =
+                scaled_expect_a * (ratio.conj() + 2.0) - (ratio - 2.0) * scaled_expect_a.conj();
+            let inner = expect_l
+                * ((params_coherent.dimensionless_mass() - ratio) * (2.0 - ratio.conj()))
+                + expect_l.conj()
+                    * ((params_coherent.dimensionless_mass() + ratio.conj()) * (2.0 - ratio));
+            out[0] += coherent_scatter_prefactor * inner / (2.0 * ratio.re);
+
+            out[1] = get_ratio_derivative(&params_coherent, alpha, ratio);
+            let mut psi_out = out.slice_mut(s![2..]);
+
+            // Add the effect of scattering from all states C_i with i > 2
+            add_potential_scattering(
+                &occupation,
+                alpha,
+                ratio,
+                &params_coherent,
+                &operator_cache,
+                &mut psi_out,
+            );
+
+            // We have a contribution from single ladder operators (ie C_01) as well
+            let mu_plus_nu_conj = mu_plus_nu.conj();
+
+            let e_1_0 = expect_a.conj() / mu_plus_nu;
+            let prefactor = coherent_scatter_prefactor
+                * mu_plus_nu_conj
+                * (e_1_0 * (4.0 + ratio_norm_sqr) + e_1_0.conj() * (4.0 - ratio_norm_sqr));
+
+            psi_out += &(&a_state * prefactor);
+
+            // And another from the operator C_02
+            let a_a_state = get_lowered_state(&a_state.view());
+            let prefactor = 0.5
+                * coherent_scatter_prefactor
+                * (ratio_norm_sqr - 4.0)
+                * (mu_plus_nu_conj * mu_plus_nu_conj);
+            psi_out += &(&a_a_state * prefactor);
+            out
         }),
         incoherent: build_quantum_incoherent_terms(&params_incoherent),
     }
