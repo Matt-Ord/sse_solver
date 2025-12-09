@@ -122,6 +122,46 @@ def solve_harmonic_quantum_langevin(
     config: SimulationConfig,
 ) -> list[complex]: ...
 
+class DoubleHarmonicLangevinSystemParameters:
+    def __init__(
+        self,
+        *,
+        dimensionless_mass: float,
+        dimensionless_omega_barrier: float,
+        dimensionless_lambda: float,
+        kbt_div_hbar: float,
+        left_distance_div_lengthscale: float,
+        right_distance_div_lengthscale: float,
+    ) -> None: ...
+    @property
+    def dimensionless_mass(self: Self) -> float: ...
+    @property
+    def dimensionless_omega_barrier(self: Self) -> float: ...
+    @property
+    def dimensionless_lambda(self: Self) -> float: ...
+    @property
+    def kbt_div_hbar(self: Self) -> float: ...
+    @property
+    def left_distance_div_lengthscale(self: Self) -> float: ...
+    @property
+    def right_distance_div_lengthscale(self: Self) -> float: ...
+
+def solve_double_harmonic_langevin(
+    initial_state: complex,
+    params: DoubleHarmonicLangevinSystemParameters,
+    config: SimulationConfig,
+) -> list[complex]: ...
+def solve_double_harmonic_stable_quantum_langevin(
+    initial_state: tuple[complex, complex],
+    params: DoubleHarmonicLangevinSystemParameters,
+    config: SimulationConfig,
+) -> list[complex]: ...
+def solve_double_harmonic_quantum_langevin(
+    initial_state: tuple[complex, complex, list[complex]],
+    params: DoubleHarmonicLangevinSystemParameters,
+    config: SimulationConfig,
+) -> list[complex]: ...
+
 class PeriodicLangevinSystemParameters:
     def __init__(
         self,

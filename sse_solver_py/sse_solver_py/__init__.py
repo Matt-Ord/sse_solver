@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from ._solver import (
     BandedData,
+    DoubleHarmonicLangevinSystemParameters,
     HarmonicLangevinSystemParameters,
     PeriodicLangevinSystemParameters,
     SimulationConfig,
     SplitOperatorData,
+    solve_double_harmonic_langevin,
+    solve_double_harmonic_quantum_langevin,
+    solve_double_harmonic_stable_quantum_langevin,
     solve_harmonic_langevin,
     solve_harmonic_quantum_langevin,
     solve_harmonic_stable_quantum_langevin,
@@ -49,11 +53,15 @@ def solve_sse_split_operator(
 
 __all__ = [
     "BandedData",
+    "DoubleHarmonicLangevinSystemParameters",
     "HarmonicLangevinSystemParameters",
     "PeriodicLangevinSystemParameters",
     "SSEMethod",
     "SimulationConfig",
     "SplitOperatorData",
+    "solve_double_harmonic_langevin",
+    "solve_double_harmonic_quantum_langevin",
+    "solve_double_harmonic_stable_quantum_langevin",
     "solve_harmonic_langevin",
     "solve_harmonic_quantum_langevin",
     "solve_harmonic_stable_quantum_langevin",
