@@ -61,6 +61,91 @@ impl LangevinParameters for HarmonicLangevinParameters {
 }
 
 #[derive(Clone)]
+pub struct DoubleHarmonicLangevinParameters {
+    pub dimensionless_mass: f64,
+    /// The dimensionless frequency of the barrier
+    /// ```latex
+    /// $\displaystyle \lambda = \frac{\hbar\Omega_b}{K_b T}$
+    /// ```
+    pub dimensionless_omega_barrier: f64,
+    /// The dimensionless friction coefficient
+    /// ```latex
+    /// $\displaystyle \lambda = \frac{\hbar\Lambda}{K_b T}$
+    /// ```
+    pub dimensionless_lambda: f64,
+    pub kbt_div_hbar: f64,
+    pub left_distance_div_lengthscale: f64,
+    pub right_distance_div_lengthscale: f64,
+}
+impl DoubleHarmonicLangevinParameters {
+    fn c2(&self) -> f64 {
+        -6.0 * self.right_distance_div_lengthscale * self.left_distance_div_lengthscale
+    }
+    fn c3(&self) -> f64 {
+        -4.0 * (self.right_distance_div_lengthscale - self.left_distance_div_lengthscale)
+    }
+    #[allow(clippy::unused_self)]
+    fn c4(&self) -> f64 {
+        3.0
+    }
+}
+
+impl LangevinParameters for DoubleHarmonicLangevinParameters {
+    fn dimensionless_mass(&self) -> f64 {
+        self.dimensionless_mass
+    }
+    fn dimensionless_lambda(&self) -> f64 {
+        self.dimensionless_lambda
+    }
+    fn kbt_div_hbar(&self) -> f64 {
+        self.kbt_div_hbar
+    }
+    #[inline]
+    fn get_potential_coefficient(&self, idx: u32, alpha: Complex<f64>, ratio: Complex<f64>) -> f64 {
+        let prefactor = self.kbt_div_hbar / (24.0 * self.dimensionless_mass);
+        let reduced_mass = self.dimensionless_mass / ratio.re;
+        let displacement_div_l = 2.0.sqrt() * alpha.re;
+
+        match idx {
+            1 => {
+                let c4 = self.c4();
+                let c3 = self.c3();
+                let c2 = self.c2();
+
+                (2.0.sqrt() * prefactor)
+                    * (c2 * displacement_div_l
+                        + 1.5 * c3 * (displacement_div_l.square() + reduced_mass)
+                        + (2.0 * c4)
+                            * (displacement_div_l
+                                * (displacement_div_l.square() + 3.0 * reduced_mass)))
+            }
+            2 => {
+                let c4 = self.c4();
+                let c3 = self.c3();
+                let c2 = self.c2();
+                prefactor
+                    * (c2
+                        + 3.0 * c3 * displacement_div_l
+                        + 6.0 * c4 * (displacement_div_l.square() + reduced_mass))
+            }
+            3 => {
+                let c4 = self.c4();
+                let c3 = self.c3();
+                (2.0.sqrt() * prefactor) * (1.5 * c3 + 6.0 * c4 * displacement_div_l)
+            }
+            4 => {
+                let c4 = self.c4();
+                prefactor * c4 * 6.0
+            }
+            _ => 0.0,
+        }
+    }
+    fn get_classical_potential_coefficient(&self, alpha: Complex<f64>) -> f64 {
+        self.get_potential_coefficient(1, alpha, Complex { re: 1.0, im: 0.0 })
+    }
+}
+
+#[derive(Clone)]
 pub struct PeriodicLangevinParameters {
     pub dimensionless_mass: f64,
     /// The dimensionless potential, given as rfft coefficients
