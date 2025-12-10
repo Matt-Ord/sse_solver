@@ -88,6 +88,10 @@ impl DoubleHarmonicLangevinParameters {
     fn c4(&self) -> f64 {
         3.0
     }
+    fn prefactor(&self) -> f64 {
+        let l_times_r = self.left_distance_div_lengthscale * self.right_distance_div_lengthscale;
+        self.dimensionless_omega_barrier.square() / (12.0 * self.dimensionless_mass * l_times_r)
+    }
 }
 
 impl LangevinParameters for DoubleHarmonicLangevinParameters {
@@ -102,7 +106,7 @@ impl LangevinParameters for DoubleHarmonicLangevinParameters {
     }
     #[inline]
     fn get_potential_coefficient(&self, idx: u32, alpha: Complex<f64>, ratio: Complex<f64>) -> f64 {
-        let prefactor = 1.0 / (24.0 * self.dimensionless_mass);
+        let prefactor = self.prefactor();
         let delta_x_sq = self.dimensionless_mass / ratio.re;
         let displacement_div_l = 2.0.sqrt() * alpha.re;
 
@@ -141,7 +145,7 @@ impl LangevinParameters for DoubleHarmonicLangevinParameters {
         }
     }
     fn get_classical_potential_coefficient(&self, alpha: Complex<f64>) -> f64 {
-        let prefactor = 1.0 / (24.0 * self.dimensionless_mass);
+        let prefactor = self.prefactor();
         let displacement_div_l = 2.0.sqrt() * alpha.re;
         let c4 = self.c4();
         let c3 = self.c3();
