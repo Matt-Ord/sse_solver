@@ -103,7 +103,7 @@ impl LangevinParameters for DoubleHarmonicLangevinParameters {
     #[inline]
     fn get_potential_coefficient(&self, idx: u32, alpha: Complex<f64>, ratio: Complex<f64>) -> f64 {
         let prefactor = 1.0 / (24.0 * self.dimensionless_mass);
-        let reduced_mass = self.dimensionless_mass / ratio.re;
+        let delta_x_sq = self.dimensionless_mass / ratio.re;
         let displacement_div_l = 2.0.sqrt() * alpha.re;
 
         match idx {
@@ -114,10 +114,10 @@ impl LangevinParameters for DoubleHarmonicLangevinParameters {
 
                 (2.0.sqrt() * prefactor)
                     * (c2 * displacement_div_l
-                        + 1.5 * c3 * (displacement_div_l.square() + reduced_mass)
+                        + 1.5 * c3 * (displacement_div_l.square() + delta_x_sq)
                         + (2.0 * c4)
                             * (displacement_div_l
-                                * (displacement_div_l.square() + 3.0 * reduced_mass)))
+                                * (displacement_div_l.square() + 3.0 * delta_x_sq)))
             }
             2 => {
                 let c4 = self.c4();
@@ -126,7 +126,7 @@ impl LangevinParameters for DoubleHarmonicLangevinParameters {
                 prefactor
                     * (c2
                         + 3.0 * c3 * displacement_div_l
-                        + 6.0 * c4 * (displacement_div_l.square() + reduced_mass))
+                        + 6.0 * c4 * (displacement_div_l.square() + delta_x_sq))
             }
             3 => {
                 let c4 = self.c4();
@@ -141,7 +141,18 @@ impl LangevinParameters for DoubleHarmonicLangevinParameters {
         }
     }
     fn get_classical_potential_coefficient(&self, alpha: Complex<f64>) -> f64 {
-        self.get_potential_coefficient(1, alpha, Complex { re: 1.0, im: 0.0 })
+        let prefactor = 1.0 / (24.0 * self.dimensionless_mass);
+        let displacement_div_l = 2.0.sqrt() * alpha.re;
+        let c4 = self.c4();
+        let c3 = self.c3();
+        let c2 = self.c2();
+
+        // For a Classical particle, we ignore the width of the wavefunction
+        // is negligible compared to the potential features
+        (2.0.sqrt() * prefactor)
+            * (c2 * displacement_div_l
+                + 1.5 * c3 * (displacement_div_l.square())
+                + (2.0 * c4) * (displacement_div_l * (displacement_div_l.square())))
     }
 }
 
