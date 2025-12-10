@@ -102,7 +102,7 @@ impl LangevinParameters for DoubleHarmonicLangevinParameters {
     }
     #[inline]
     fn get_potential_coefficient(&self, idx: u32, alpha: Complex<f64>, ratio: Complex<f64>) -> f64 {
-        let prefactor = self.kbt_div_hbar / (24.0 * self.dimensionless_mass);
+        let prefactor = 1.0 / (24.0 * self.dimensionless_mass);
         let reduced_mass = self.dimensionless_mass / ratio.re;
         let displacement_div_l = 2.0.sqrt() * alpha.re;
 
@@ -438,7 +438,13 @@ fn add_potential_scattering<T: LangevinParameters>(
         alpha_dist.push(next_alpha);
     }
 
-    // To save on calculating c_val, we do this in an outer loop over L
+    // Add to psi_out the effect of scattering.
+    // We ignore C_1, C_2 as they are eliminated by the squeezing transformation.
+    // The sum we are trying to compute is:
+    // psi_out[m] += (-i/ hbar) \sum_n \sum_k^{min(m,n)} C_{L} (alpha^p / p!) (beta^q / q!) (sqrt(m!n!)/k!) psi[n]
+    // where L = m+n-2K, p=m-k, q=n-k.
+    // However we re-arrange these sums to first loop over L, then p, then k.
+    // This allows us to only compute C_L once per L, rather than for every (m,n) pair.
     for l in 3..(2 * ns - 1) {
         #[allow(clippy::cast_possible_truncation)]
         let c_val = params.get_potential_coefficient(l as u32, alpha, ratio);
@@ -450,16 +456,16 @@ fn add_potential_scattering<T: LangevinParameters>(
         // Determine valid range for 'p' such that p + q = l
         // Constraints: 0 <= p < ns  AND  0 <= q < ns
         // Since q = l - p, implies: p > l - ns
-        let p_start = if l >= ns { l - ns + 1 } else { 0 };
-        let p_end = if l < ns { l } else { ns - 1 };
-
-        // 3. Loop 'p': Decompose L into p + q
+        // 0 <= p < ns and l - ns < p =< l
+        let p_start = 0.max(l - ns + 1);
+        let p_end = l.min(ns - 1);
         for p in p_start..=p_end {
             let q = l - p;
 
             // Pre-calculate the static part of the term
-            // Term = C_L * (alpha^p / p!) * (beta^q / q!)
-            let factor_static = c_val * alpha_dist[p] * alpha_dist[q].conj();
+            // Term = (-i/hbar) * C_L * (alpha^p / p!) * (beta^q / q!)
+            let mut factor_static = c_val * alpha_dist[p] * alpha_dist[q].conj();
+            factor_static *= Complex::new(0.0, params.kbt_div_hbar());
             if factor_static.norm_sqr() < 1e-24 {
                 continue;
             }
@@ -473,16 +479,12 @@ fn add_potential_scattering<T: LangevinParameters>(
             let k_limit = ns - 1 - max_pq;
 
             for k in 0..=k_limit {
-                let m = p + k; // Output index
-                let n = q + k; // Input index
+                let m = p + k;
+                let n = q + k;
 
-                // Accumulate: psi_out[m] += factor * (sqrt(m!n!)/k!) * psi[n]
-
+                // weight = (sqrt(m!n!) / k!)
                 let weight = cache.sqrt_factors[m] * cache.sqrt_factors[n] * cache.inv_factors[k];
-
-                let contribution = factor_static * weight * psi[n];
-
-                psi_out[m] += contribution;
+                psi_out[m] += factor_static * weight * psi[n];
             }
         }
     }
