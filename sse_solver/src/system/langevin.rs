@@ -81,7 +81,7 @@ impl DoubleHarmonicLangevinParameters {
         -6.0 * self.right_distance_div_lengthscale * self.left_distance_div_lengthscale
     }
     fn c3(&self) -> f64 {
-        -4.0 * (self.right_distance_div_lengthscale - self.left_distance_div_lengthscale)
+        4.0 * (self.left_distance_div_lengthscale - self.right_distance_div_lengthscale)
     }
     #[allow(clippy::unused_self)]
     fn c4(&self) -> f64 {
@@ -89,7 +89,7 @@ impl DoubleHarmonicLangevinParameters {
     }
     fn prefactor(&self) -> f64 {
         let l_times_r = self.left_distance_div_lengthscale * self.right_distance_div_lengthscale;
-        self.dimensionless_omega_barrier.square() / (6.0 * self.dimensionless_mass * l_times_r)
+        self.dimensionless_omega_barrier.square() / (12.0 * self.dimensionless_mass * l_times_r)
     }
 }
 
@@ -106,7 +106,7 @@ impl LangevinParameters for DoubleHarmonicLangevinParameters {
     #[inline]
     fn get_potential_coefficient(&self, idx: u32, alpha: Complex<f64>, ratio: Complex<f64>) -> f64 {
         let prefactor = self.prefactor();
-        let delta_x_sq = self.dimensionless_mass / ratio.re;
+        let width_factor = self.dimensionless_mass / ratio.re;
         let displacement_div_l = 2.0.sqrt() * alpha.re;
 
         match idx {
@@ -115,12 +115,11 @@ impl LangevinParameters for DoubleHarmonicLangevinParameters {
                 let c3 = self.c3();
                 let c2 = self.c2();
 
-                (2.0.sqrt() * prefactor)
-                    * (c2 * displacement_div_l
-                        + 1.5 * c3 * (displacement_div_l.square() + delta_x_sq)
-                        + (2.0 * c4)
-                            * (displacement_div_l
-                                * (displacement_div_l.square() + 3.0 * delta_x_sq)))
+                (2.0.sqrt() * prefactor * 0.125)
+                    * (4.0 * c2 * displacement_div_l
+                        + 3.0 * c3 * (2.0 * displacement_div_l.square() + width_factor)
+                        + (4.0 * c4 * displacement_div_l)
+                            * (2.0 * displacement_div_l.square() + 3.0 * width_factor))
             }
             2 => {
                 let c4 = self.c4();
@@ -129,7 +128,7 @@ impl LangevinParameters for DoubleHarmonicLangevinParameters {
                 prefactor
                     * (c2
                         + 3.0 * c3 * displacement_div_l
-                        + 6.0 * c4 * (displacement_div_l.square() + delta_x_sq))
+                        + 3.0 * c4 * (2.0 * displacement_div_l.square() + width_factor))
             }
             3 => {
                 let c4 = self.c4();
@@ -150,12 +149,10 @@ impl LangevinParameters for DoubleHarmonicLangevinParameters {
         let c3 = self.c3();
         let c2 = self.c2();
 
-        // For a Classical particle, we ignore the width of the wavefunction
-        // is negligible compared to the potential features
-        (2.0.sqrt() * prefactor)
-            * (c2 * displacement_div_l
-                + 1.5 * c3 * (displacement_div_l.square())
-                + (2.0 * c4) * (displacement_div_l * (displacement_div_l.square())))
+        (2.0.sqrt() * prefactor * 0.125)
+            * (4.0 * c2 * displacement_div_l
+                + 3.0 * c3 * (2.0 * displacement_div_l.square())
+                + (4.0 * c4 * displacement_div_l) * (2.0 * displacement_div_l.square()))
     }
 }
 
