@@ -1,5 +1,3 @@
-use std::iter::successors;
-
 use ndarray::{Array1, ArrayView1, ArrayViewMut1, array, s};
 use ndarray_linalg::Scalar;
 use num_complex::Complex;
@@ -77,6 +75,7 @@ pub struct DoubleHarmonicLangevinParameters {
     pub left_distance_div_lengthscale: f64,
     pub right_distance_div_lengthscale: f64,
 }
+
 impl DoubleHarmonicLangevinParameters {
     fn c2(&self) -> f64 {
         -6.0 * self.right_distance_div_lengthscale * self.left_distance_div_lengthscale
@@ -90,7 +89,7 @@ impl DoubleHarmonicLangevinParameters {
     }
     fn prefactor(&self) -> f64 {
         let l_times_r = self.left_distance_div_lengthscale * self.right_distance_div_lengthscale;
-        self.dimensionless_omega_barrier.square() / (12.0 * self.dimensionless_mass * l_times_r)
+        self.dimensionless_omega_barrier.square() / (6.0 * self.dimensionless_mass * l_times_r)
     }
 }
 
@@ -406,23 +405,40 @@ pub fn get_stable_quantum_langevin_system<T: LangevinParameters + Clone + Send +
 }
 
 struct OperatorCache {
+    // A cache of pre-computed factors sqrt(n!) for n=0..size-1
     sqrt_factors: Vec<f64>,
+    // A cache of pre-computed factors 1/n! for n=0..size-1
     inv_factors: Vec<f64>,
 }
 
 impl OperatorCache {
     fn build(size: usize) -> Self {
-        Self {
-            sqrt_factors: successors(Some(1.0f64), |&prev| {
-                #[allow(clippy::cast_precision_loss)]
-                Some((prev * (size as f64 - 1.0)).sqrt())
-            })
-            .take(size)
-            .collect(),
+        // Initialize the vectors with capacity for efficiency
+        let mut sqrt_factors = Vec::with_capacity(size);
+        let mut inv_factors = Vec::with_capacity(size);
+
+        // n=0 case: 0! = 1.0. sqrt(0!) = 1.0, 1/0! = 1.0
+        if size > 0 {
+            sqrt_factors.push(1.0);
+            inv_factors.push(1.0);
+        }
+
+        // Iterate from n=1 up to size-1 (since n=0 is handled above)
+        for n in 1..size {
+            // Calculate sqrt(n!): sqrt(n!) = sqrt((n-1)!) * sqrt(n)
             #[allow(clippy::cast_precision_loss)]
-            inv_factors: successors(Some(1.0f64), |&prev| Some(prev / (size as f64 - 1.0)))
-                .take(size)
-                .collect(),
+            let next_sqrt = sqrt_factors[n - 1] * (n as f64).sqrt();
+            sqrt_factors.push(next_sqrt);
+
+            // Calculate 1/n!: 1/n! = (1/(n-1)!) / n
+            #[allow(clippy::cast_precision_loss)]
+            let next_inv = inv_factors[n - 1] / (n as f64);
+            inv_factors.push(next_inv);
+        }
+
+        Self {
+            sqrt_factors,
+            inv_factors,
         }
     }
 }
@@ -431,6 +447,28 @@ fn get_mu_plus_nu(ratio: Complex<f64>, dimensionless_m: f64) -> Complex<f64> {
     let m_plus_r = dimensionless_m + ratio;
     let mu_plus_mu_sq = 2.0 * dimensionless_m * m_plus_r.conj() / (ratio.re * m_plus_r);
     mu_plus_mu_sq.sqrt()
+}
+
+fn add_c2_scattering<T: LangevinParameters>(
+    psi: &ArrayView1<Complex<f64>>,
+    alpha: Complex<f64>,
+    ratio: Complex<f64>,
+    params: &T,
+    psi_out: &mut ArrayViewMut1<Complex<f64>>,
+) {
+    let ns = psi.len();
+
+    let mu_plus_nu = get_mu_plus_nu(ratio, params.dimensionless_mass());
+
+    // Add the effect of scattering at i=2.
+    // We only include the effect when n=m, as other terms are eliminated
+    let c2_val = params.get_potential_coefficient(2, alpha, ratio);
+    let factor = Complex::new(0.0, -c2_val * params.kbt_div_hbar());
+    for n in 1..ns {
+        #[allow(clippy::cast_precision_loss)]
+        let n_f64 = n as f64;
+        psi_out[n] += factor * mu_plus_nu.norm_sqr() * n_f64 * psi[n];
+    }
 }
 
 fn add_potential_scattering<T: LangevinParameters>(
@@ -453,8 +491,9 @@ fn add_potential_scattering<T: LangevinParameters>(
         alpha_dist.push(next_alpha);
     }
 
-    // Add to psi_out the effect of scattering.
-    // We ignore C_1, C_2 as they are eliminated by the squeezing transformation.
+    add_c2_scattering(psi, alpha, ratio, params, psi_out);
+    // Add to psi_out the remaining effect of scattering.
+    // We ignore C_1, C_2 as they are modified by the squeezing transformation.
     // The sum we are trying to compute is:
     // psi_out[m] += (-i/ hbar) \sum_n \sum_k^{min(m,n)} C_{L} (alpha^p / p!) (beta^q / q!) (sqrt(m!n!)/k!) psi[n]
     // where L = m+n-2K, p=m-k, q=n-k.
@@ -480,7 +519,7 @@ fn add_potential_scattering<T: LangevinParameters>(
             // Pre-calculate the static part of the term
             // Term = (-i/hbar) * C_L * (alpha^p / p!) * (beta^q / q!)
             let mut factor_static = c_val * alpha_dist[p] * alpha_dist[q].conj();
-            factor_static *= Complex::new(0.0, params.kbt_div_hbar());
+            factor_static *= Complex::new(0.0, -params.kbt_div_hbar());
             if factor_static.norm_sqr() < 1e-24 {
                 continue;
             }
