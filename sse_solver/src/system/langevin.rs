@@ -170,6 +170,10 @@ pub struct PeriodicLangevinParameters {
     /// $\displaystyle \lambda = \frac{\hbar\Lambda}{K_b T}$
     /// ```
     pub dimensionless_lambda: f64,
+    /// The Time scale factor
+    /// ```latex
+    /// $\displaystyle \frac{K_b T}{\hbar}$
+    /// ```
     pub kbt_div_hbar: f64,
 }
 
