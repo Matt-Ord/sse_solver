@@ -244,12 +244,13 @@ impl LangevinParameters for PeriodicLangevinParameters {
 pub fn get_langevin_system<T: LangevinParameters + Clone + Send + Sync + 'static>(
     params: &T,
 ) -> SimpleStochasticSDESystem {
-    let prefactor = params.kbt_div_hbar() / (2.0 * params.dimensionless_mass());
     let alpha_im_factor = Complex {
-        re: 4.0 * params.dimensionless_mass().square() * prefactor,
-        im: -2.0 * params.dimensionless_mass() * params.dimensionless_lambda() * prefactor,
+        re: 2.0 * params.kbt_div_hbar() * params.dimensionless_mass().square(),
+        im: -params.dimensionless_lambda() * params.kbt_div_hbar(),
     };
-    let force_prefactor = (prefactor * params.dimensionless_lambda()).sqrt();
+    let force_prefactor = (params.kbt_div_hbar() * params.dimensionless_lambda()
+        / (2.0 * params.dimensionless_mass()))
+    .sqrt();
     let params_coherent = params.clone();
     SimpleStochasticSDESystem {
         coherent: Box::new(move |_t, state| {
@@ -358,17 +359,19 @@ fn get_ratio_derivative<T: LangevinParameters>(
     alpha: Complex<f64>,
     ratio: Complex<f64>,
 ) -> Complex<f64> {
-    let prefactor = -0.125 * params.kbt_div_hbar();
-    let r2 = params.dimensionless_lambda() + Complex { re: 0.0, im: 8.0 };
-    let r1 = 4.0 * params.dimensionless_lambda();
+    let r2 = Complex {
+        re: -0.125 * params.dimensionless_lambda(),
+        im: -2.0,
+    };
+    let r1 = -params.dimensionless_lambda();
 
     let c2 = params.get_potential_coefficient(2, alpha, ratio);
-    let r0 = -4.0 * params.dimensionless_lambda()
-        + c2 * Complex {
-            re: 0.0,
-            im: -8.0 * params.dimensionless_mass(),
-        };
-    prefactor * ((ratio * ratio) * r2 + ratio * r1 + r0)
+    let r0 = Complex::new(
+        params.dimensionless_lambda(),
+        2.0 * c2 * params.dimensionless_mass(),
+    );
+
+    params.kbt_div_hbar() * ((ratio * ratio) * r2 + ratio * r1 + r0)
 }
 
 /// Create a `SimpleStochasticSDESystem` representing a particle
@@ -378,10 +381,9 @@ fn get_ratio_derivative<T: LangevinParameters>(
 pub fn get_stable_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync + 'static>(
     params: &T,
 ) -> SimpleStochasticSDESystem {
-    let prefactor = params.kbt_div_hbar() / (2.0 * params.dimensionless_mass());
     let alpha_im_factor = Complex {
-        re: 4.0 * params.dimensionless_mass().square() * prefactor,
-        im: -2.0 * params.dimensionless_mass() * params.dimensionless_lambda() * prefactor,
+        re: 2.0 * params.kbt_div_hbar() * params.dimensionless_mass().square(),
+        im: -params.dimensionless_lambda() * params.kbt_div_hbar(),
     };
 
     let params_coherent = params.clone();
@@ -553,10 +555,9 @@ pub fn get_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync +
     params: &T,
     size: usize,
 ) -> SimpleStochasticSDESystem {
-    let prefactor = params.kbt_div_hbar() / (2.0 * params.dimensionless_mass());
     let alpha_im_factor = Complex {
-        re: 4.0 * params.dimensionless_mass().square() * prefactor,
-        im: -2.0 * params.dimensionless_mass() * params.dimensionless_lambda() * prefactor,
+        re: 2.0 * params.kbt_div_hbar() * params.dimensionless_mass().square(),
+        im: -params.dimensionless_lambda() * params.kbt_div_hbar(),
     };
 
     let params_coherent = params.clone();
