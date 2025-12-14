@@ -314,6 +314,7 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
     let random_scatter_prefactor = (params.kbt_div_hbar() * params.dimensionless_lambda()
         / (8.0 * params.dimensionless_mass()))
     .sqrt();
+    return vec![];
     vec![
         Box::new(move |_t, state| {
             let ratio = state[1];
