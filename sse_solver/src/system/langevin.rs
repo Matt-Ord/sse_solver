@@ -277,7 +277,8 @@ fn get_quantum_re_force_prefactor<T: LangevinParameters>(
     let prefactor = (params.kbt_div_hbar() * params.dimensionless_lambda() / 8.0).sqrt();
     let sqrt_m = params.dimensionless_mass().sqrt();
     Complex {
-        re: prefactor * sqrt_m * ((2.0 / ratio.re) - 1.0),
+        re: 0.0,
+        // re: prefactor * sqrt_m * ((2.0 / ratio.re) - 1.0),
         im: -2.0 * ratio.im * prefactor / (sqrt_m * ratio.re),
     }
 }
@@ -289,7 +290,8 @@ fn get_quantum_im_force_prefactor<T: LangevinParameters>(
     let prefactor = (params.kbt_div_hbar() * params.dimensionless_lambda() / 8.0).sqrt();
     let sqrt_m = params.dimensionless_mass().sqrt();
     Complex {
-        re: sqrt_m * (ratio.im / ratio.re) * prefactor,
+        re: 0.0,
+        // re: sqrt_m * (ratio.im / ratio.re) * prefactor,
         im: prefactor * (2.0 - ratio.re - ratio.im * (ratio.im / ratio.re)) / (sqrt_m),
     }
 }
@@ -314,7 +316,6 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
     let random_scatter_prefactor = (params.kbt_div_hbar() * params.dimensionless_lambda()
         / (8.0 * params.dimensionless_mass()))
     .sqrt();
-    return vec![];
     vec![
         Box::new(move |_t, state| {
             let ratio = state[1];
