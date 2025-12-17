@@ -294,7 +294,7 @@ fn get_quantum_im_force_prefactor<T: LangevinParameters>(
     let m = params.dimensionless_mass();
     Complex {
         re: prefactor * m * ratio.im / ratio.re,
-        im: prefactor * (2.0 - (ratio.norm_sqr() / ratio.re)),
+        im: prefactor * (2.0 - ratio.re - (ratio.im.square() / ratio.re)),
     }
 }
 
@@ -315,8 +315,8 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
 ) -> Vec<Box<SimpleStochasticFn>> {
     let params0 = params.clone();
     let params1 = params.clone();
-    let random_scatter_prefactor = (params.kbt_div_hbar() * params.dimensionless_lambda()
-        / (8.0 * params.dimensionless_mass()))
+    let random_scatter_prefactor = (2.0 * params.kbt_div_hbar() * params.dimensionless_lambda()
+        / (params.dimensionless_mass()))
     .sqrt();
     vec![
         Box::new(move |_t, state| {
@@ -328,13 +328,9 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
 
             let occupation = state.slice(s![2..]);
             let a_operator = get_lowered_state(&occupation);
-            let mu_plus_nu = get_mu_plus_nu(ratio, params0.dimensionless_mass());
-
-            let re_scatter_prefactor =
-                random_scatter_prefactor * mu_plus_nu.conj() * (2.0 + ratio.conj());
 
             out.slice_mut(s![2..])
-                .assign(&(a_operator * re_scatter_prefactor));
+                .assign(&(a_operator * random_scatter_prefactor));
             out
         }),
         Box::new(move |_t, state| {
@@ -346,10 +342,8 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
 
             let occupation = state.slice(s![2..]);
             let a_operator = get_lowered_state(&occupation);
-            let mu_plus_nu = get_mu_plus_nu(ratio, params1.dimensionless_mass());
-
             let im_scatter_prefactor =
-                random_scatter_prefactor * mu_plus_nu.conj() * (2.0 - ratio.conj());
+                random_scatter_prefactor * 0.5 * Complex::new(ratio.im, ratio.re);
 
             out.slice_mut(s![2..])
                 .assign(&(a_operator * im_scatter_prefactor));
@@ -386,7 +380,7 @@ pub fn get_stable_quantum_langevin_system<T: LangevinParameters + Clone + Send +
     params: &T,
 ) -> SimpleStochasticSDESystem {
     let alpha_im_factor = Complex {
-        re: 2.0 * params.kbt_div_hbar() * params.dimensionless_mass().square(),
+        re: 2.0 * params.kbt_div_hbar() * params.dimensionless_mass(),
         im: -params.dimensionless_lambda() * params.kbt_div_hbar(),
     };
 
@@ -457,24 +451,27 @@ fn get_mu_plus_nu(ratio: Complex<f64>, dimensionless_m: f64) -> Complex<f64> {
 }
 
 fn get_expect_a(psi: &ArrayView1<Complex<f64>>) -> Complex<f64> {
-    let a_state = get_lowered_state(&psi);
+    let a_state = get_lowered_state(psi);
     psi.iter()
         .zip(a_state.iter())
         .map(|(psi_val, a_val)| psi_val.conj() * a_val)
         .sum::<Complex<f64>>()
 }
-fn get_expect_l(
+
+fn get_expect_l<T: LangevinParameters>(
     psi: &ArrayView1<Complex<f64>>,
     ratio: Complex<f64>,
-    dimensionless_m: f64,
+    params: &T,
 ) -> Complex<f64> {
-    let mu_plus_nu = get_mu_plus_nu(ratio, dimensionless_m);
-    get_expect_a(psi) * mu_plus_nu
+    let mu_plus_nu = get_mu_plus_nu(ratio, params.dimensionless_mass());
+    let e_10 = get_expect_a(psi).conj() * mu_plus_nu;
+    let lambda = params.dimensionless_lambda();
+    let prefactor = (params.kbt_div_hbar() * lambda / (8.0 * params.dimensionless_mass())).sqrt();
+    prefactor * (ratio.conj() + 2.0) * e_10.conj() + (2.0 - ratio) * e_10
 }
 
 fn add_s_10_scattering<T: LangevinParameters>(
     psi: &ArrayView1<Complex<f64>>,
-    alpha: Complex<f64>,
     ratio: Complex<f64>,
     params: &T,
     psi_out: &mut ArrayViewMut1<Complex<f64>>,
@@ -483,10 +480,11 @@ fn add_s_10_scattering<T: LangevinParameters>(
 
     let mu_plus_nu = get_mu_plus_nu(ratio, params.dimensionless_mass());
 
-    // Add the effect of scattering at i=2.
-    // We only include the effect when n=m, as other terms are eliminated
-    let s_10_val = 0.0;
-    unimplemented!();
+    let expect_l = get_expect_l(psi, ratio, params);
+    let prefactor = (2.0 * params.kbt_div_hbar() * params.dimensionless_lambda()
+        / params.dimensionless_mass())
+    .sqrt();
+    let s_10_val = prefactor * (expect_l.re - expect_l.im * 0.5 * Complex::new(ratio.im, ratio.re));
 
     for n in 1..ns {
         #[allow(clippy::cast_precision_loss)]
@@ -494,9 +492,9 @@ fn add_s_10_scattering<T: LangevinParameters>(
         psi_out[n - 1] += s_10_val * mu_plus_nu * (n_f64 + 1.0).sqrt() * psi[n];
     }
 }
+
 fn add_s_20_scattering<T: LangevinParameters>(
     psi: &ArrayView1<Complex<f64>>,
-    alpha: Complex<f64>,
     ratio: Complex<f64>,
     params: &T,
     psi_out: &mut ArrayViewMut1<Complex<f64>>,
@@ -507,8 +505,8 @@ fn add_s_20_scattering<T: LangevinParameters>(
 
     // Add the effect of scattering at i=2.
     // We only include the effect when n=m, as other terms are eliminated
-    let s_20_val = 0.0;
-    unimplemented!();
+    let prefactor = params.dimensionless_lambda() / (4.0 * params.dimensionless_mass());
+    let s_20_val = prefactor * params.kbt_div_hbar() * (ratio.norm_sqr() - 4.0);
 
     for n in 1..ns {
         #[allow(clippy::cast_precision_loss)]
@@ -517,6 +515,7 @@ fn add_s_20_scattering<T: LangevinParameters>(
             s_20_val * (mu_plus_nu * mu_plus_nu) * (n_f64 * (n_f64 + 1.0)).sqrt() * psi[n];
     }
 }
+
 fn add_s_11_scattering<T: LangevinParameters>(
     psi: &ArrayView1<Complex<f64>>,
     alpha: Complex<f64>,
@@ -527,12 +526,17 @@ fn add_s_11_scattering<T: LangevinParameters>(
     let ns = psi.len();
 
     let mu_plus_nu = get_mu_plus_nu(ratio, params.dimensionless_mass());
+    let lambda = params.dimensionless_lambda();
+    let m = params.dimensionless_mass();
 
-    // Add the effect of scattering at i=2.
-    // We only include the effect when n=m, as other terms are eliminated
+    let a = lambda * (ratio.norm_sqr() + 4.0) / (8.0 * m);
+    let b_prefactor = lambda * (ratio.re * ratio.im) / (4.0 * m * (m + ratio).norm_sqr());
+    let b = b_prefactor * (4.0 + 4.0 * m - m.square()) * Complex::i();
+    let c_prefactor = -Complex::i() * ratio.re / ((m + ratio).norm_sqr());
     let c2_val = params.get_potential_coefficient(2, alpha, ratio);
-    let s_11_val = 0.0;
-    unimplemented!();
+    let c =
+        c_prefactor * (c2_val * (m + 2.0 * ratio.re) + 2.0 * m * ratio.re + 2.0 * ratio.norm_sqr());
+    let s_11_val = params.kbt_div_hbar() * (a + b + c);
 
     for n in 1..ns {
         #[allow(clippy::cast_precision_loss)]
@@ -540,7 +544,8 @@ fn add_s_11_scattering<T: LangevinParameters>(
         psi_out[n - 1] += s_11_val * mu_plus_nu.norm_sqr() * (n_f64) * psi[n];
     }
 }
-fn add_potential_scattering<T: LangevinParameters>(
+
+fn add_residual_scattering<T: LangevinParameters>(
     psi: &ArrayView1<Complex<f64>>,
     alpha: Complex<f64>,
     ratio: Complex<f64>,
@@ -559,11 +564,6 @@ fn add_potential_scattering<T: LangevinParameters>(
         let next_alpha = unsafe { alpha_dist.last().unwrap_unchecked() } * mu_plus_nu / (i as f64);
         alpha_dist.push(next_alpha);
     }
-
-    add_s_10_scattering(psi, alpha, ratio, params, psi_out);
-    add_s_20_scattering(psi, alpha, ratio, params, psi_out);
-    add_s_11_scattering(psi, alpha, ratio, params, psi_out);
-
     // Add to psi_out the remaining effect of scattering.
     // We ignore C_1, C_2 as they are modified by the squeezing transformation.
     // The sum we are trying to compute is:
@@ -615,6 +615,19 @@ fn add_potential_scattering<T: LangevinParameters>(
         }
     }
 }
+fn add_scattering<T: LangevinParameters>(
+    psi: &ArrayView1<Complex<f64>>,
+    alpha: Complex<f64>,
+    ratio: Complex<f64>,
+    params: &T,
+    cache: &OperatorCache,
+    psi_out: &mut ArrayViewMut1<Complex<f64>>,
+) {
+    add_s_10_scattering(psi, ratio, params, psi_out);
+    add_s_20_scattering(psi, ratio, params, psi_out);
+    add_s_11_scattering(psi, alpha, ratio, params, psi_out);
+    add_residual_scattering(psi, alpha, ratio, params, cache, psi_out);
+}
 
 /// Create a `SimpleStochasticSDESystem` representing a particle
 /// in the most stable squeezed state
@@ -625,54 +638,39 @@ pub fn get_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync +
     size: usize,
 ) -> SimpleStochasticSDESystem {
     let alpha_im_factor = Complex {
-        re: 2.0 * params.kbt_div_hbar() * params.dimensionless_mass().square(),
+        re: 2.0 * params.kbt_div_hbar() * params.dimensionless_mass(),
         im: -params.dimensionless_lambda() * params.kbt_div_hbar(),
     };
 
     let params_coherent = params.clone();
     let params_incoherent = params.clone();
     let operator_cache = OperatorCache::build(size);
-    let coherent_scatter_prefactor = (params.kbt_div_hbar() * params.dimensionless_lambda())
-        / (4.0 * params.dimensionless_mass());
 
     SimpleStochasticSDESystem {
         coherent: Box::new(move |_t, state| {
             let alpha = state[0];
             let ratio = state[1];
-            let occupation = state.slice(s![2..]);
 
             let mut out = Array1::zeros(state.len());
 
             let c1 = params_coherent.get_potential_coefficient(1, alpha, ratio);
             let potential_factor = Complex { re: 0.0, im: -c1 } * params_coherent.kbt_div_hbar();
-
             out[0] = alpha_im_factor * alpha.im + potential_factor;
+            out[1] = get_ratio_derivative(&params_coherent, alpha, ratio);
 
+            let occupation = state.slice(s![2..]);
             // We also have an additional contribution to d alpha/dt if the state
             // is not in the ground state
-            let a_state = get_lowered_state(&occupation);
-            let expect_a = a_state
-                .iter()
-                .zip(occupation.iter())
-                .map(|(a_val, psi_val)| a_val.conj() * psi_val)
-                .sum::<Complex<f64>>();
-            let ratio_norm_sqr = ratio.norm_sqr();
-            let mu_plus_nu = get_mu_plus_nu(ratio, params_coherent.dimensionless_mass());
-            let scaled_expect_a = expect_a * mu_plus_nu;
+            let expect_l = get_expect_l(&occupation, ratio, &params_coherent);
+            let re_factor = get_quantum_re_force_prefactor(&params_coherent, ratio);
+            let im_factor = get_quantum_im_force_prefactor(&params_coherent, ratio);
+            // Note here we subtract the im component
+            out[0] += re_factor * expect_l.re - im_factor * expect_l.im;
 
-            let expect_l =
-                scaled_expect_a * (ratio.conj() + 2.0) - (ratio - 2.0) * scaled_expect_a.conj();
-            let inner = expect_l
-                * ((params_coherent.dimensionless_mass() - ratio) * (2.0 - ratio.conj()))
-                + expect_l.conj()
-                    * ((params_coherent.dimensionless_mass() + ratio.conj()) * (2.0 - ratio));
-            out[0] += coherent_scatter_prefactor * inner / (2.0 * ratio.re);
-
-            out[1] = get_ratio_derivative(&params_coherent, alpha, ratio);
             let mut psi_out = out.slice_mut(s![2..]);
 
-            // Add the effect of scattering from all states C_i with i > 2
-            add_potential_scattering(
+            // Add the effect of scattering between states
+            add_scattering(
                 &occupation,
                 alpha,
                 ratio,
@@ -681,23 +679,6 @@ pub fn get_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync +
                 &mut psi_out,
             );
 
-            // We have a contribution from single ladder operators (ie C_01) as well
-            let mu_plus_nu_conj = mu_plus_nu.conj();
-
-            let e_1_0 = expect_a.conj() / mu_plus_nu;
-            let prefactor = coherent_scatter_prefactor
-                * mu_plus_nu_conj
-                * (e_1_0 * (4.0 + ratio_norm_sqr) + e_1_0.conj() * (4.0 - ratio_norm_sqr));
-
-            psi_out += &(&a_state * prefactor);
-
-            // And another from the operator C_02
-            let a_a_state = get_lowered_state(&a_state.view());
-            let prefactor = 0.5
-                * coherent_scatter_prefactor
-                * (ratio_norm_sqr - 4.0)
-                * (mu_plus_nu_conj * mu_plus_nu_conj);
-            psi_out += &(&a_a_state * prefactor);
             out
         }),
         incoherent: build_quantum_incoherent_terms(&params_incoherent),
