@@ -326,12 +326,11 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
             let mut out = Array1::zeros(state.len());
             out[0] = re_prefactor;
 
-            // TODO: re-enable
-            // let occupation = state.slice(s![2..]);
-            // let a_operator = get_lowered_state(&occupation);
+            let occupation = state.slice(s![2..]);
+            let a_operator = get_lowered_state(&occupation);
 
-            // out.slice_mut(s![2..])
-            //     .assign(&(a_operator * random_scatter_prefactor));
+            out.slice_mut(s![2..])
+                .assign(&(a_operator * random_scatter_prefactor));
             out
         }),
         Box::new(move |_t, state| {
@@ -341,14 +340,13 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
             let mut out = Array1::zeros(state.len());
             out[0] = im_prefactor;
 
-            // TODO: re-enable
-            // let occupation = state.slice(s![2..]);
-            // let a_operator = get_lowered_state(&occupation);
-            // let im_scatter_prefactor =
-            //     random_scatter_prefactor * 0.5 * Complex::new(ratio.im, ratio.re);
+            let occupation = state.slice(s![2..]);
+            let a_operator = get_lowered_state(&occupation);
+            let im_scatter_prefactor =
+                random_scatter_prefactor * 0.5 * Complex::new(ratio.im, ratio.re);
 
-            // out.slice_mut(s![2..])
-            //     .assign(&(a_operator * im_scatter_prefactor));
+            out.slice_mut(s![2..])
+                .assign(&(a_operator * im_scatter_prefactor));
             out
         }),
     ]
@@ -470,6 +468,20 @@ fn get_expect_l<T: LangevinParameters>(
     let lambda = params.dimensionless_lambda();
     let prefactor = (params.kbt_div_hbar() * lambda / (8.0 * params.dimensionless_mass())).sqrt();
     prefactor * (ratio.conj() + 2.0) * e_10.conj() + (2.0 - ratio) * e_10
+}
+fn add_s_00_scattering<T: LangevinParameters>(
+    psi: &ArrayView1<Complex<f64>>,
+    ratio: Complex<f64>,
+    params: &T,
+    psi_out: &mut ArrayViewMut1<Complex<f64>>,
+) {
+    let ns = psi.len();
+    let expect_l = get_expect_l(psi, ratio, params);
+    let s_00_val = -0.5 * expect_l.norm_sqr();
+
+    for n in 0..ns {
+        psi_out[n] += s_00_val * psi[n];
+    }
 }
 
 fn add_s_10_scattering<T: LangevinParameters>(
@@ -625,6 +637,7 @@ fn add_scattering<T: LangevinParameters>(
     cache: &OperatorCache,
     psi_out: &mut ArrayViewMut1<Complex<f64>>,
 ) {
+    add_s_00_scattering(psi, ratio, params, psi_out);
     add_s_10_scattering(psi, ratio, params, psi_out);
     add_s_20_scattering(psi, ratio, params, psi_out);
     add_s_11_scattering(psi, alpha, ratio, params, psi_out);
