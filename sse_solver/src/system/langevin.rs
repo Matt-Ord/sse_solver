@@ -326,11 +326,12 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
             let mut out = Array1::zeros(state.len());
             out[0] = re_prefactor;
 
-            let occupation = state.slice(s![2..]);
-            let a_operator = get_lowered_state(&occupation);
+            // TODO: re-enable
+            // let occupation = state.slice(s![2..]);
+            // let a_operator = get_lowered_state(&occupation);
 
-            out.slice_mut(s![2..])
-                .assign(&(a_operator * random_scatter_prefactor));
+            // out.slice_mut(s![2..])
+            //     .assign(&(a_operator * random_scatter_prefactor));
             out
         }),
         Box::new(move |_t, state| {
@@ -340,13 +341,14 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
             let mut out = Array1::zeros(state.len());
             out[0] = im_prefactor;
 
-            let occupation = state.slice(s![2..]);
-            let a_operator = get_lowered_state(&occupation);
-            let im_scatter_prefactor =
-                random_scatter_prefactor * 0.5 * Complex::new(ratio.im, ratio.re);
+            // TODO: re-enable
+            // let occupation = state.slice(s![2..]);
+            // let a_operator = get_lowered_state(&occupation);
+            // let im_scatter_prefactor =
+            //     random_scatter_prefactor * 0.5 * Complex::new(ratio.im, ratio.re);
 
-            out.slice_mut(s![2..])
-                .assign(&(a_operator * im_scatter_prefactor));
+            // out.slice_mut(s![2..])
+            //     .assign(&(a_operator * im_scatter_prefactor));
             out
         }),
     ]
