@@ -471,13 +471,27 @@ fn get_expect_l<T: LangevinParameters>(
 }
 fn add_s_00_scattering<T: LangevinParameters>(
     psi: &ArrayView1<Complex<f64>>,
+    alpha: Complex<f64>,
     ratio: Complex<f64>,
     params: &T,
     psi_out: &mut ArrayViewMut1<Complex<f64>>,
 ) {
     let ns = psi.len();
     let expect_l = get_expect_l(psi, ratio, params);
-    let s_00_val = -0.5 * expect_l.norm_sqr();
+    let prefactor = Complex {
+        re: 0.5
+            + (2.0 * params.kbt_div_hbar() * params.dimensionless_lambda()
+                / params.dimensionless_mass())
+            .sqrt()
+                * alpha.re,
+        im: (0.5
+            * params.kbt_div_hbar()
+            * params.dimensionless_lambda()
+            * params.dimensionless_mass())
+        .sqrt()
+            * alpha.im,
+    };
+    let s_00_val = -expect_l.norm_sqr() + prefactor * expect_l.conj();
 
     for n in 0..ns {
         psi_out[n] += s_00_val * psi[n];
@@ -543,13 +557,12 @@ fn add_s_11_scattering<T: LangevinParameters>(
     let lambda = params.dimensionless_lambda();
     let m = params.dimensionless_mass();
 
-    let a = lambda * (ratio.norm_sqr() + 4.0) / (8.0 * m);
+    let a = -lambda * (ratio.norm_sqr() + 4.0) / (8.0 * m);
     let b_prefactor = lambda * (ratio.re * ratio.im) / (4.0 * m * (m + ratio).norm_sqr());
     let b = b_prefactor * (4.0 + 4.0 * m - m.square()) * Complex::i();
-    let c_prefactor = -Complex::i() * ratio.re / ((m + ratio).norm_sqr());
+    let c_prefactor = -Complex::i() * 2.0 * ratio.re / ((m + ratio).norm_sqr());
     let c2_val = params.get_potential_coefficient(2, alpha, ratio);
-    let c =
-        c_prefactor * (c2_val * (m + 2.0 * ratio.re) + 2.0 * m * ratio.re + 2.0 * ratio.norm_sqr());
+    let c = c_prefactor * (c2_val * (m + ratio.re) + m * ratio.re + ratio.norm_sqr());
     let s_11_val = params.kbt_div_hbar() * (a + b + c);
 
     for n in 1..ns {
@@ -637,7 +650,7 @@ fn add_scattering<T: LangevinParameters>(
     cache: &OperatorCache,
     psi_out: &mut ArrayViewMut1<Complex<f64>>,
 ) {
-    add_s_00_scattering(psi, ratio, params, psi_out);
+    add_s_00_scattering(psi, alpha, ratio, params, psi_out);
     add_s_10_scattering(psi, ratio, params, psi_out);
     add_s_20_scattering(psi, ratio, params, psi_out);
     add_s_11_scattering(psi, alpha, ratio, params, psi_out);
