@@ -478,20 +478,12 @@ fn add_s_00_scattering<T: LangevinParameters>(
 ) {
     let ns = psi.len();
     let expect_l = get_expect_l(psi, ratio, params);
-    let prefactor = Complex {
-        re: 0.5
-            + (2.0 * params.kbt_div_hbar() * params.dimensionless_lambda()
-                / params.dimensionless_mass())
-            .sqrt()
-                * alpha.re,
-        im: (0.5
-            * params.kbt_div_hbar()
-            * params.dimensionless_lambda()
-            * params.dimensionless_mass())
-        .sqrt()
-            * alpha.im,
-    };
-    let s_00_val = -expect_l.norm_sqr() + prefactor * expect_l.conj();
+    let prefactor =
+        (params.kbt_div_hbar() * params.dimensionless_lambda() * params.dimensionless_mass())
+            .sqrt();
+    let re_contribution = expect_l.re * (0.5 - 2.0.sqrt() * prefactor * alpha.re);
+    let im_contribution = -expect_l.im * (0.5.sqrt() * prefactor * alpha.im);
+    let s_00_val = -expect_l.norm_sqr() + re_contribution + im_contribution;
 
     for n in 0..ns {
         psi_out[n] += s_00_val * psi[n];
