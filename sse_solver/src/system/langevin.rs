@@ -328,9 +328,10 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
 
             let occupation = state.slice(s![2..]);
             let a_operator = get_lowered_state(&occupation);
+            let mu_plus_nu = get_mu_plus_nu(ratio, params0.dimensionless_mass());
 
             out.slice_mut(s![2..])
-                .assign(&(a_operator * random_scatter_prefactor));
+                .assign(&(a_operator * (mu_plus_nu.conj() * random_scatter_prefactor)));
             out
         }),
         Box::new(move |_t, state| {
@@ -344,9 +345,10 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
             let a_operator = get_lowered_state(&occupation);
             let im_scatter_prefactor =
                 random_scatter_prefactor * 0.5 * Complex::new(ratio.im, ratio.re);
+            let mu_plus_nu = get_mu_plus_nu(ratio, params1.dimensionless_mass());
 
             out.slice_mut(s![2..])
-                .assign(&(a_operator * im_scatter_prefactor));
+                .assign(&(a_operator * (mu_plus_nu.conj() * im_scatter_prefactor)));
             out
         }),
     ]
@@ -446,7 +448,7 @@ impl OperatorCache {
 
 fn get_mu_plus_nu(ratio: Complex<f64>, dimensionless_m: f64) -> Complex<f64> {
     let m_plus_r = dimensionless_m + ratio;
-    let mu_plus_mu_sq = 2.0 * dimensionless_m * m_plus_r.conj() / (ratio.re * m_plus_r);
+    let mu_plus_mu_sq = dimensionless_m * m_plus_r.conj() / (ratio.re * m_plus_r);
     mu_plus_mu_sq.sqrt()
 }
 
@@ -478,19 +480,18 @@ fn add_s_00_scattering<T: LangevinParameters>(
 ) {
     let ns = psi.len();
     let expect_l = get_expect_l(psi, ratio, params);
-    let prefactor =
-        (params.kbt_div_hbar() * params.dimensionless_lambda() * params.dimensionless_mass())
-            .sqrt();
+    let lambda = params.dimensionless_lambda();
+    let prefactor = (params.kbt_div_hbar() * lambda * params.dimensionless_mass()).sqrt();
     let re_contribution = expect_l.re * (0.5 - 2.0.sqrt() * prefactor * alpha.re);
     let im_contribution = -expect_l.im * (0.5.sqrt() * prefactor * alpha.im);
-    let s_00_val = -expect_l.norm_sqr() + re_contribution + im_contribution;
+    let s_00_val = -(expect_l.norm_sqr()) + re_contribution + im_contribution;
 
     for n in 0..ns {
         psi_out[n] += s_00_val * psi[n];
     }
 }
 
-fn add_s_10_scattering<T: LangevinParameters>(
+fn add_s_01_scattering<T: LangevinParameters>(
     psi: &ArrayView1<Complex<f64>>,
     ratio: Complex<f64>,
     params: &T,
@@ -501,19 +502,18 @@ fn add_s_10_scattering<T: LangevinParameters>(
     let mu_plus_nu = get_mu_plus_nu(ratio, params.dimensionless_mass());
 
     let expect_l = get_expect_l(psi, ratio, params);
-    let prefactor = (2.0 * params.kbt_div_hbar() * params.dimensionless_lambda()
-        / params.dimensionless_mass())
-    .sqrt();
+    let lambda = params.dimensionless_lambda();
+    let prefactor = (2.0 * params.kbt_div_hbar() * lambda / params.dimensionless_mass()).sqrt();
     let s_10_val = prefactor * (expect_l.re - expect_l.im * 0.5 * Complex::new(ratio.im, ratio.re));
 
     for n in 1..ns {
         #[allow(clippy::cast_precision_loss)]
         let n_f64 = n as f64;
-        psi_out[n - 1] += s_10_val * mu_plus_nu * (n_f64 + 1.0).sqrt() * psi[n];
+        psi_out[n - 1] += s_10_val * mu_plus_nu.conj() * (n_f64 + 1.0).sqrt() * psi[n];
     }
 }
 
-fn add_s_20_scattering<T: LangevinParameters>(
+fn add_s_02_scattering<T: LangevinParameters>(
     psi: &ArrayView1<Complex<f64>>,
     ratio: Complex<f64>,
     params: &T,
@@ -526,13 +526,15 @@ fn add_s_20_scattering<T: LangevinParameters>(
     // Add the effect of scattering at i=2.
     // We only include the effect when n=m, as other terms are eliminated
     let prefactor = params.dimensionless_lambda() / (4.0 * params.dimensionless_mass());
-    let s_20_val = prefactor * params.kbt_div_hbar() * (ratio.norm_sqr() - 4.0);
+    let s_20_val = prefactor * params.kbt_div_hbar() * (ratio.conj() * ratio.conj() - 4.0);
 
     for n in 1..ns {
         #[allow(clippy::cast_precision_loss)]
         let n_f64 = n as f64;
-        psi_out[n - 1] +=
-            s_20_val * (mu_plus_nu * mu_plus_nu) * (n_f64 * (n_f64 + 1.0)).sqrt() * psi[n];
+        psi_out[n - 1] += s_20_val
+            * (mu_plus_nu.conj() * mu_plus_nu.conj())
+            * (n_f64 * (n_f64 + 1.0)).sqrt()
+            * psi[n];
     }
 }
 
@@ -643,8 +645,8 @@ fn add_scattering<T: LangevinParameters>(
     psi_out: &mut ArrayViewMut1<Complex<f64>>,
 ) {
     add_s_00_scattering(psi, alpha, ratio, params, psi_out);
-    add_s_10_scattering(psi, ratio, params, psi_out);
-    add_s_20_scattering(psi, ratio, params, psi_out);
+    add_s_01_scattering(psi, ratio, params, psi_out);
+    add_s_02_scattering(psi, ratio, params, psi_out);
     add_s_11_scattering(psi, alpha, ratio, params, psi_out);
     add_residual_scattering(psi, alpha, ratio, params, cache, psi_out);
 }
