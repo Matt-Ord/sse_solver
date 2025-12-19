@@ -328,32 +328,37 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
 ) -> Vec<Box<SimpleStochasticFn>> {
     let params0 = params.clone();
     let params1 = params.clone();
-    let random_scatter_prefactor = (2.0 * params.kbt_div_hbar() * params.dimensionless_lambda()
+    let random_scatter_prefactor = (params.kbt_div_hbar() * params.dimensionless_lambda()
         / (params.dimensionless_mass()))
     .sqrt();
     vec![
         Box::new(move |_t, state| {
             let ratio = state[1];
-            let re_prefactor = get_quantum_re_force_prefactor(&params0, ratio);
+            // Note we scale by sqrt(0.5) here
+            // Since the noise terms in the stochastic schrodinger equation
+            // have a norm of 1/sqrt(2)
+            let re_prefactor = 0.5.sqrt() * get_quantum_re_force_prefactor(&params0, ratio);
 
             let mut out = Array1::zeros(state.len());
-            out[0] = re_prefactor * 0.5.sqrt();
+            out[0] = re_prefactor;
 
             let occupation = state.slice(s![2..]);
             let a_operator = get_lowered_state(&occupation);
             let mu_plus_nu = get_mu_plus_nu(ratio, params0.dimensionless_mass());
 
-            out.slice_mut(s![2..]).assign(
-                &(a_operator * (mu_plus_nu.conj() * random_scatter_prefactor * 0.5.sqrt())),
-            );
+            out.slice_mut(s![2..])
+                .assign(&(a_operator * (mu_plus_nu.conj() * random_scatter_prefactor)));
             out
         }),
         Box::new(move |_t, state| {
             let ratio = state[1];
-            let im_prefactor = get_quantum_im_force_prefactor(&params1, ratio);
+            // Note we scale by sqrt(0.5) here
+            // Since the noise terms in the stochastic schrodinger equation
+            // have a norm of 1/sqrt(2)
+            let im_prefactor = 0.5.sqrt() * get_quantum_im_force_prefactor(&params1, ratio);
 
             let mut out = Array1::zeros(state.len());
-            out[0] = im_prefactor * 0.5.sqrt();
+            out[0] = im_prefactor;
 
             let occupation = state.slice(s![2..]);
             let a_operator = get_lowered_state(&occupation);
@@ -362,7 +367,7 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
             let mu_plus_nu = get_mu_plus_nu(ratio, params1.dimensionless_mass());
 
             out.slice_mut(s![2..])
-                .assign(&(a_operator * (mu_plus_nu.conj() * im_scatter_prefactor * 0.5.sqrt())));
+                .assign(&(a_operator * (mu_plus_nu.conj() * im_scatter_prefactor)));
             out
         }),
     ]
@@ -498,7 +503,7 @@ fn get_e_20(
     get_expect_aa(psi).conj() * mu_plus_nu * mu_plus_nu
 }
 fn get_expect_a_dagger_a(psi: &ArrayView1<Complex<f64>>) -> f64 {
-    let a_state = get_double_lowered_state(psi);
+    let a_state = get_lowered_state(psi);
     a_state.iter().map(num_complex::Complex::norm_sqr).sum()
 }
 fn get_e_11(psi: &ArrayView1<Complex<f64>>, ratio: Complex<f64>, dimensionless_m: f64) -> f64 {
@@ -526,11 +531,11 @@ fn get_expect_l_dagger_l<T: LangevinParameters>(
     let e_20 = get_e_20(psi, ratio, params.dimensionless_mass());
     let e_11 = get_e_11(psi, ratio, params.dimensionless_mass());
     let lambda = params.dimensionless_lambda();
-    let prefactor = params.kbt_div_hbar() * lambda / (8.0 * params.dimensionless_mass());
+    let prefactor = params.kbt_div_hbar() * lambda / (4.0 * params.dimensionless_mass());
     let e_10_term =
-        4.0 * (e_10 * (2.0 * params.dimensionless_mass() * ratio * alpha.re + 8.0 * alpha.im)).re;
-    let e_20_term = 2.0 * ((4.0 - ratio * ratio) * e_20).re;
-    let e_11_term = 2.0 * e_11 * (4.0 + ratio.norm_sqr());
+        (e_10 * (4.0 * params.dimensionless_mass() * ratio * alpha.im + 16.0 * alpha.re)).re;
+    let e_20_term = ((4.0 - ratio * ratio) * e_20).re;
+    let e_11_term = e_11 * (4.0 + ratio.norm_sqr());
     prefactor * (e_10_term + e_20_term + e_11_term)
 }
 
