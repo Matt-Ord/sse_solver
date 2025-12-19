@@ -337,14 +337,15 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
             let re_prefactor = get_quantum_re_force_prefactor(&params0, ratio);
 
             let mut out = Array1::zeros(state.len());
-            out[0] = re_prefactor;
+            out[0] = re_prefactor * 0.5.sqrt();
 
             let occupation = state.slice(s![2..]);
             let a_operator = get_lowered_state(&occupation);
             let mu_plus_nu = get_mu_plus_nu(ratio, params0.dimensionless_mass());
 
-            out.slice_mut(s![2..])
-                .assign(&(a_operator * (mu_plus_nu.conj() * random_scatter_prefactor)));
+            out.slice_mut(s![2..]).assign(
+                &(a_operator * (mu_plus_nu.conj() * random_scatter_prefactor * 0.5.sqrt())),
+            );
             out
         }),
         Box::new(move |_t, state| {
@@ -352,7 +353,7 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
             let im_prefactor = get_quantum_im_force_prefactor(&params1, ratio);
 
             let mut out = Array1::zeros(state.len());
-            out[0] = im_prefactor;
+            out[0] = im_prefactor * 0.5.sqrt();
 
             let occupation = state.slice(s![2..]);
             let a_operator = get_lowered_state(&occupation);
@@ -361,7 +362,7 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
             let mu_plus_nu = get_mu_plus_nu(ratio, params1.dimensionless_mass());
 
             out.slice_mut(s![2..])
-                .assign(&(a_operator * (mu_plus_nu.conj() * im_scatter_prefactor)));
+                .assign(&(a_operator * (mu_plus_nu.conj() * im_scatter_prefactor * 0.5.sqrt())));
             out
         }),
     ]
