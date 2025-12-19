@@ -299,6 +299,9 @@ fn get_quantum_im_force_prefactor<T: LangevinParameters>(
 }
 
 /// Apply the lowering operator to the state
+/// ```latex
+/// \hat{a} \left| \psi \right>
+/// ```
 fn get_lowered_state(psi: &ArrayView1<Complex<f64>>) -> Array1<Complex<f64>> {
     let ns = psi.len();
     let mut out = Array1::zeros(ns);
@@ -306,6 +309,16 @@ fn get_lowered_state(psi: &ArrayView1<Complex<f64>>) -> Array1<Complex<f64>> {
         #[allow(clippy::cast_precision_loss)]
         let factor = (n as f64).sqrt();
         out[n - 1] = psi[n] * factor;
+    }
+    out
+}
+fn get_double_lowered_state(psi: &ArrayView1<Complex<f64>>) -> Array1<Complex<f64>> {
+    let ns = psi.len();
+    let mut out = Array1::zeros(ns);
+    for n in 2..ns {
+        #[allow(clippy::cast_precision_loss)]
+        let factor = ((n * (n - 1)) as f64).sqrt();
+        out[n - 2] = psi[n] * factor;
     }
     out
 }
@@ -460,17 +473,66 @@ fn get_expect_a(psi: &ArrayView1<Complex<f64>>) -> Complex<f64> {
         .sum::<Complex<f64>>()
 }
 
+fn get_e_10(
+    psi: &ArrayView1<Complex<f64>>,
+    ratio: Complex<f64>,
+    dimensionless_m: f64,
+) -> Complex<f64> {
+    let mu_plus_nu = get_mu_plus_nu(ratio, dimensionless_m);
+    get_expect_a(psi).conj() * mu_plus_nu
+}
+fn get_expect_aa(psi: &ArrayView1<Complex<f64>>) -> Complex<f64> {
+    let a_state = get_double_lowered_state(psi);
+    psi.iter()
+        .zip(a_state.iter())
+        .map(|(psi_val, a_val)| psi_val.conj() * a_val)
+        .sum::<Complex<f64>>()
+}
+fn get_e_20(
+    psi: &ArrayView1<Complex<f64>>,
+    ratio: Complex<f64>,
+    dimensionless_m: f64,
+) -> Complex<f64> {
+    let mu_plus_nu = get_mu_plus_nu(ratio, dimensionless_m);
+    get_expect_aa(psi).conj() * mu_plus_nu * mu_plus_nu
+}
+fn get_expect_a_dagger_a(psi: &ArrayView1<Complex<f64>>) -> f64 {
+    let a_state = get_double_lowered_state(psi);
+    a_state.iter().map(num_complex::Complex::norm_sqr).sum()
+}
+fn get_e_11(psi: &ArrayView1<Complex<f64>>, ratio: Complex<f64>, dimensionless_m: f64) -> f64 {
+    let mu_plus_nu = get_mu_plus_nu(ratio, dimensionless_m);
+    get_expect_a_dagger_a(psi) * mu_plus_nu.norm_sqr()
+}
 fn get_expect_l<T: LangevinParameters>(
     psi: &ArrayView1<Complex<f64>>,
     ratio: Complex<f64>,
     params: &T,
 ) -> Complex<f64> {
-    let mu_plus_nu = get_mu_plus_nu(ratio, params.dimensionless_mass());
-    let e_10 = get_expect_a(psi).conj() * mu_plus_nu;
+    let e_10 = get_e_10(psi, ratio, params.dimensionless_mass());
     let lambda = params.dimensionless_lambda();
     let prefactor = (params.kbt_div_hbar() * lambda / (8.0 * params.dimensionless_mass())).sqrt();
     prefactor * (ratio.conj() + 2.0) * e_10.conj() + (2.0 - ratio) * e_10
 }
+
+fn get_expect_l_dagger_l<T: LangevinParameters>(
+    psi: &ArrayView1<Complex<f64>>,
+    alpha: Complex<f64>,
+    ratio: Complex<f64>,
+    params: &T,
+) -> f64 {
+    let e_10 = get_e_10(psi, ratio, params.dimensionless_mass());
+    let e_20 = get_e_20(psi, ratio, params.dimensionless_mass());
+    let e_11 = get_e_11(psi, ratio, params.dimensionless_mass());
+    let lambda = params.dimensionless_lambda();
+    let prefactor = params.kbt_div_hbar() * lambda / (8.0 * params.dimensionless_mass());
+    let e_10_term =
+        4.0 * (e_10 * (2.0 * params.dimensionless_mass() * ratio * alpha.re + 8.0 * alpha.im)).re;
+    let e_20_term = 2.0 * ((4.0 - ratio * ratio) * e_20).re;
+    let e_11_term = 2.0 * e_11 * (4.0 + ratio.norm_sqr());
+    prefactor * (e_10_term + e_20_term + e_11_term)
+}
+
 fn add_s_00_scattering<T: LangevinParameters>(
     psi: &ArrayView1<Complex<f64>>,
     alpha: Complex<f64>,
@@ -481,10 +543,12 @@ fn add_s_00_scattering<T: LangevinParameters>(
     let ns = psi.len();
     let expect_l = get_expect_l(psi, ratio, params);
     let lambda = params.dimensionless_lambda();
-    let prefactor = (params.kbt_div_hbar() * lambda * params.dimensionless_mass()).sqrt();
-    let re_contribution = expect_l.re * (0.5 - 2.0.sqrt() * prefactor * alpha.re);
-    let im_contribution = -expect_l.im * (0.5.sqrt() * prefactor * alpha.im);
-    let s_00_val = -(expect_l.norm_sqr()) + re_contribution + im_contribution;
+    let prefactor = (2.0 * params.kbt_div_hbar() * lambda * params.dimensionless_mass()).sqrt();
+    let re_contribution = -expect_l.re * (prefactor * alpha.re / params.dimensionless_mass());
+    let im_contribution = -expect_l.im * (prefactor * alpha.im * 0.5);
+    let s_00_val = 0.5 * get_expect_l_dagger_l(psi, alpha, ratio, params) - (expect_l.norm_sqr())
+        + re_contribution
+        + im_contribution;
 
     for n in 0..ns {
         psi_out[n] += s_00_val * psi[n];
