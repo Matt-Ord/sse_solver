@@ -546,7 +546,6 @@ fn add_s_00_scattering<T: LangevinParameters>(
     params: &T,
     psi_out: &mut ArrayViewMut1<Complex<f64>>,
 ) {
-    let ns = psi.len();
     let expect_l = get_expect_l(psi, ratio, params);
     let lambda = params.dimensionless_lambda();
     let prefactor = (2.0 * params.kbt_div_hbar() * lambda * params.dimensionless_mass()).sqrt();
@@ -556,7 +555,7 @@ fn add_s_00_scattering<T: LangevinParameters>(
         + re_contribution
         + im_contribution;
 
-    for n in 0..ns {
+    for n in 0..psi.len() {
         psi_out[n] += s_00_val * psi[n];
     }
 }
@@ -604,6 +603,7 @@ fn add_s_02_scattering<T: LangevinParameters>(
         psi_out[n - 1] += s_20_val
             * (mu_plus_nu.conj() * mu_plus_nu.conj())
             * (n_f64 * (n_f64 + 1.0)).sqrt()
+            * 0.5
             * psi[n];
     }
 }
