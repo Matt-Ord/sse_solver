@@ -1,6 +1,6 @@
 use std::thread;
 
-use ndarray::{Array1, Array2, Array3, array};
+use ndarray::{Array1, Array2, Array3, array, s};
 use num_complex::Complex;
 use pyo3::IntoPyObject;
 use pyo3::types::PyList;
@@ -11,8 +11,8 @@ use sse_solver::solvers::{
 };
 use sse_solver::sparse::PlannedSplitScatteringArray;
 use sse_solver::system::langevin::{
-    HarmonicLangevinParameters, PeriodicLangevinParameters, get_langevin_system,
-    get_stable_quantum_langevin_system,
+    DoubleHarmonicLangevinParameters, HarmonicLangevinParameters, PeriodicLangevinParameters,
+    get_langevin_system, get_quantum_langevin_system, get_stable_quantum_langevin_system,
 };
 use sse_solver::system::simple_stochastic::{SimpleStochasticFn, SimpleStochasticSDESystem};
 use sse_solver::{
@@ -640,6 +640,155 @@ fn solve_harmonic_stable_quantum_langevin(
         .cloned()
         .collect())
 }
+#[pyfunction]
+fn solve_harmonic_quantum_langevin(
+    initial_state: (Complex<f64>, Complex<f64>, Vec<Complex<f64>>),
+    params: PyRef<HarmonicLangevinSystemParameters>,
+    config: PyRef<SimulationConfig>,
+) -> PyResult<Vec<Complex<f64>>> {
+    let system = get_quantum_langevin_system(
+        &HarmonicLangevinParameters {
+            dimensionless_mass: params.dimensionless_mass,
+            dimensionless_omega: params.dimensionless_omega,
+            dimensionless_lambda: params.dimensionless_lambda,
+            kbt_div_hbar: params.kbt_div_hbar,
+        },
+        initial_state.2.len(),
+    );
+
+    let mut state_vec = Array1::zeros(initial_state.2.len() + 2);
+    state_vec[0] = initial_state.0;
+    state_vec[1] = initial_state.1;
+    state_vec
+        .slice_mut(s![2..])
+        .assign(&Array1::from(initial_state.2.clone()));
+
+    Ok(config
+        .simulate_system(&state_vec, &system, &StateMeasurement {})
+        .iter()
+        .flat_map(|d| d.iter())
+        .cloned()
+        .collect())
+}
+
+#[pyclass]
+struct DoubleHarmonicLangevinSystemParameters {
+    #[pyo3(get, set)]
+    dimensionless_mass: f64,
+    #[pyo3(get, set)]
+    dimensionless_omega_barrier: f64,
+    #[pyo3(get, set)]
+    dimensionless_lambda: f64,
+    #[pyo3(get, set)]
+    kbt_div_hbar: f64,
+    #[pyo3(get, set)]
+    left_distance_div_lengthscale: f64,
+    #[pyo3(get, set)]
+    right_distance_div_lengthscale: f64,
+}
+
+#[pymethods]
+impl DoubleHarmonicLangevinSystemParameters {
+    #[new]
+    #[pyo3(signature = (*, dimensionless_mass, dimensionless_omega_barrier, dimensionless_lambda, kbt_div_hbar, left_distance_div_lengthscale, right_distance_div_lengthscale))]
+    fn new(
+        dimensionless_mass: f64,
+        dimensionless_omega_barrier: f64,
+        dimensionless_lambda: f64,
+        kbt_div_hbar: f64,
+        left_distance_div_lengthscale: f64,
+        right_distance_div_lengthscale: f64,
+    ) -> Self {
+        DoubleHarmonicLangevinSystemParameters {
+            dimensionless_mass,
+            dimensionless_omega_barrier,
+            dimensionless_lambda,
+            kbt_div_hbar,
+            left_distance_div_lengthscale,
+            right_distance_div_lengthscale,
+        }
+    }
+}
+
+#[pyfunction]
+fn solve_double_harmonic_langevin(
+    initial_state: Complex<f64>,
+    params: PyRef<DoubleHarmonicLangevinSystemParameters>,
+    config: PyRef<SimulationConfig>,
+) -> PyResult<Vec<Complex<f64>>> {
+    let system = get_langevin_system(&DoubleHarmonicLangevinParameters {
+        dimensionless_mass: params.dimensionless_mass,
+        dimensionless_omega_barrier: params.dimensionless_omega_barrier,
+        dimensionless_lambda: params.dimensionless_lambda,
+        kbt_div_hbar: params.kbt_div_hbar,
+        left_distance_div_lengthscale: params.left_distance_div_lengthscale,
+        right_distance_div_lengthscale: params.right_distance_div_lengthscale,
+    });
+
+    let initial_state = array![initial_state];
+    Ok(config
+        .simulate_system(&initial_state, &system, &StateMeasurement {})
+        .iter()
+        .flat_map(|d| d.iter())
+        .cloned()
+        .collect())
+}
+
+#[pyfunction]
+fn solve_double_harmonic_stable_quantum_langevin(
+    initial_state: (Complex<f64>, Complex<f64>),
+    params: PyRef<DoubleHarmonicLangevinSystemParameters>,
+    config: PyRef<SimulationConfig>,
+) -> PyResult<Vec<Complex<f64>>> {
+    let system = get_stable_quantum_langevin_system(&DoubleHarmonicLangevinParameters {
+        dimensionless_mass: params.dimensionless_mass,
+        dimensionless_omega_barrier: params.dimensionless_omega_barrier,
+        dimensionless_lambda: params.dimensionless_lambda,
+        kbt_div_hbar: params.kbt_div_hbar,
+        left_distance_div_lengthscale: params.left_distance_div_lengthscale,
+        right_distance_div_lengthscale: params.right_distance_div_lengthscale,
+    });
+
+    let initial_state = array![initial_state.0, initial_state.1];
+    Ok(config
+        .simulate_system(&initial_state, &system, &StateMeasurement {})
+        .iter()
+        .flat_map(|d| d.iter())
+        .cloned()
+        .collect())
+}
+#[pyfunction]
+fn solve_double_harmonic_quantum_langevin(
+    initial_state: (Complex<f64>, Complex<f64>, Vec<Complex<f64>>),
+    params: PyRef<DoubleHarmonicLangevinSystemParameters>,
+    config: PyRef<SimulationConfig>,
+) -> PyResult<Vec<Complex<f64>>> {
+    let system = get_quantum_langevin_system(
+        &DoubleHarmonicLangevinParameters {
+            dimensionless_mass: params.dimensionless_mass,
+            dimensionless_omega_barrier: params.dimensionless_omega_barrier,
+            dimensionless_lambda: params.dimensionless_lambda,
+            kbt_div_hbar: params.kbt_div_hbar,
+            left_distance_div_lengthscale: params.left_distance_div_lengthscale,
+            right_distance_div_lengthscale: params.right_distance_div_lengthscale,
+        },
+        initial_state.2.len(),
+    );
+
+    let mut state_vec = Array1::zeros(initial_state.2.len() + 2);
+    state_vec[0] = initial_state.0;
+    state_vec[1] = initial_state.1;
+    state_vec
+        .slice_mut(s![2..])
+        .assign(&Array1::from(initial_state.2.clone()));
+
+    Ok(config
+        .simulate_system(&state_vec, &system, &StateMeasurement {})
+        .iter()
+        .flat_map(|d| d.iter())
+        .cloned()
+        .collect())
+}
 
 #[pyclass]
 struct PeriodicLangevinSystemParameters {
@@ -697,7 +846,6 @@ fn solve_periodic_langevin(
         .cloned()
         .collect())
 }
-
 #[pyfunction]
 fn solve_periodic_stable_quantum_langevin(
     initial_state: (Complex<f64>, Complex<f64>),
@@ -721,6 +869,37 @@ fn solve_periodic_stable_quantum_langevin(
         .collect())
 }
 
+#[pyfunction]
+fn solve_periodic_quantum_langevin(
+    initial_state: (Complex<f64>, Complex<f64>, Vec<Complex<f64>>),
+    params: PyRef<PeriodicLangevinSystemParameters>,
+    config: PyRef<SimulationConfig>,
+) -> PyResult<Vec<Complex<f64>>> {
+    let system = get_quantum_langevin_system(
+        &PeriodicLangevinParameters {
+            dimensionless_mass: params.dimensionless_mass,
+            dimensionless_potential: params.dimensionless_potential.clone(),
+            dk_times_lengthscale: params.dk_times_lengthscale,
+            dimensionless_lambda: params.dimensionless_lambda,
+            kbt_div_hbar: params.kbt_div_hbar,
+        },
+        initial_state.2.len(),
+    );
+
+    let mut state_vec = Array1::zeros(initial_state.2.len() + 2);
+    state_vec[0] = initial_state.0;
+    state_vec[1] = initial_state.1;
+    state_vec
+        .slice_mut(s![2..])
+        .assign(&Array1::from(initial_state.2.clone()));
+    Ok(config
+        .simulate_system(&state_vec, &system, &StateMeasurement {})
+        .iter()
+        .flat_map(|d| d.iter())
+        .cloned()
+        .collect())
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -732,12 +911,21 @@ fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_simple_stochastic, m)?)?;
     m.add_function(wrap_pyfunction!(solve_harmonic_langevin, m)?)?;
     m.add_function(wrap_pyfunction!(solve_harmonic_stable_quantum_langevin, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_harmonic_quantum_langevin, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_double_harmonic_langevin, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        solve_double_harmonic_stable_quantum_langevin,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(solve_double_harmonic_quantum_langevin, m)?)?;
     m.add_function(wrap_pyfunction!(solve_periodic_langevin, m)?)?;
     m.add_function(wrap_pyfunction!(solve_periodic_stable_quantum_langevin, m)?)?;
+    m.add_function(wrap_pyfunction!(solve_periodic_quantum_langevin, m)?)?;
     m.add_class::<SimulationConfig>()?;
     m.add_class::<BandedData>()?;
     m.add_class::<SplitOperatorData>()?;
     m.add_class::<HarmonicLangevinSystemParameters>()?;
+    m.add_class::<DoubleHarmonicLangevinSystemParameters>()?;
     m.add_class::<PeriodicLangevinSystemParameters>()?;
 
     Ok(())
