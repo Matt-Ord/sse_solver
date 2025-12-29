@@ -122,7 +122,7 @@ def solve_harmonic_quantum_langevin(
     config: SimulationConfig,
 ) -> list[complex]: ...
 def solve_harmonic_full_quantum_langevin(
-    initial_state: tuple[complex, complex, list[complex], list[complex]],
+    initial_state: tuple[complex, complex, list[complex]],
     params: HarmonicLangevinSystemParameters,
     config: SimulationConfig,
 ) -> list[complex]: ...
