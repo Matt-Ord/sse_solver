@@ -658,7 +658,7 @@ fn add_residual_scattering<T: LangevinParameters>(
     // Add to psi_out the remaining effect of scattering.
     // We ignore C_1, C_2 as they are modified by the squeezing transformation.
     // The sum we are trying to compute is:
-    // psi_out[m] += (-i/ hbar) \sum_n \sum_k^{min(m,n)} C_{L} (alpha^p / p!) (beta^q / q!) (sqrt(m!n!)/k!) psi[n]
+    // psi_out[m] += (-iKbT/ hbar) \sum_n \sum_k^{min(m,n)} C_{L} (alpha^p / p!) (beta^q / q!) (sqrt(m!n!)/k!) psi[n]
     // where L = m+n-2K, p=m-k, q=n-k.
     // However we re-arrange these sums to first loop over L, then p, then k.
     // This allows us to only compute C_L once per L, rather than for every (m,n) pair.
@@ -680,7 +680,7 @@ fn add_residual_scattering<T: LangevinParameters>(
             let q = l - p;
 
             // Pre-calculate the static part of the term
-            // Term = (-i/hbar) * C_L * (alpha^p / p!) * (beta^q / q!)
+            // Term = (-KbT/hbar) * C_L * (alpha^p / p!) * (beta^q / q!)
             let mut factor_static = c_val * alpha_dist[p] * alpha_dist[q].conj();
             factor_static *= Complex::new(0.0, -params.kbt_div_hbar());
             if factor_static.norm_sqr() < 1e-24 {
@@ -706,6 +706,7 @@ fn add_residual_scattering<T: LangevinParameters>(
         }
     }
 }
+
 fn add_scattering<T: LangevinParameters>(
     psi: &ArrayView1<Complex<f64>>,
     alpha: Complex<f64>,
