@@ -323,7 +323,7 @@ fn get_double_lowered_state(psi: &ArrayView1<Complex<f64>>) -> Array1<Complex<f6
     out
 }
 
-fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 'static>(
+fn build_local_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 'static>(
     params: &T,
 ) -> Vec<Box<SimpleStochasticFn>> {
     let params0 = params.clone();
@@ -397,7 +397,9 @@ fn get_ratio_derivative<T: LangevinParameters>(
 /// in the most stable squeezed state
 /// in a harmonic potential with Calderia-Leggett quantum Langevin dynamics.
 #[must_use]
-pub fn get_stable_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync + 'static>(
+pub fn get_stable_local_quantum_langevin_system<
+    T: LangevinParameters + Clone + Send + Sync + 'static,
+>(
     params: &T,
 ) -> SimpleStochasticSDESystem {
     let alpha_im_factor = Complex {
@@ -422,7 +424,7 @@ pub fn get_stable_quantum_langevin_system<T: LangevinParameters + Clone + Send +
 
             out
         }),
-        incoherent: build_quantum_incoherent_terms(&params_incoherent),
+        incoherent: build_local_quantum_incoherent_terms(&params_incoherent),
     }
 }
 
@@ -726,7 +728,7 @@ fn add_scattering<T: LangevinParameters>(
 /// in the most stable squeezed state
 /// in a harmonic potential with Calderia-Leggett quantum Langevin dynamics.
 #[must_use]
-pub fn get_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync + 'static>(
+pub fn get_local_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync + 'static>(
     params: &T,
     size: usize,
 ) -> SimpleStochasticSDESystem {
@@ -774,6 +776,193 @@ pub fn get_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync +
 
             out
         }),
-        incoherent: build_quantum_incoherent_terms(&params_incoherent),
+        incoherent: build_local_quantum_incoherent_terms(&params_incoherent),
+    }
+}
+
+fn add_scattering_terms<T: LangevinParameters>(
+    psi: &ArrayView1<Complex<f64>>,
+    ratio: Complex<f64>,
+    terms: [[Complex<f64>; 3]; 3],
+    params: &T,
+    cache: &OperatorCache,
+    psi_out: &mut ArrayViewMut1<Complex<f64>>,
+) {
+    let ns = psi.len();
+
+    let mu_plus_nu = get_mu_plus_nu(ratio, params.dimensionless_mass());
+
+    let mut alpha_dist = Vec::with_capacity(ns);
+    alpha_dist.push(Complex::new(1.0, 0.0));
+    for i in 1..ns {
+        #[allow(clippy::cast_precision_loss)]
+        let next_alpha = unsafe { alpha_dist.last().unwrap_unchecked() } * mu_plus_nu / (i as f64);
+        alpha_dist.push(next_alpha);
+    }
+    // Add to psi_out the scattering contribution from the operator
+    // \hat{O} = \sum_{i,j} terms[i][j] (mu + nu)^i (mu + nu)^*^j / (i! j!) \hat{a}^\dagger^i \hat{a}^j
+    for (i, terms_i) in terms.iter().enumerate() {
+        for (j, term) in terms_i.iter().enumerate() {
+            assert_eq!(*term, terms[i][j]);
+            if term.norm_sqr() < 1e-24 {
+                continue;
+            }
+
+            let scaled = term * alpha_dist[i] * alpha_dist[j].conj();
+
+            for k in 0..ns {
+                // Apply \hat{a}^j: lowers state n to k
+                // n is the source index
+                let n = k + j;
+                if n >= ns {
+                    break;
+                }
+
+                // Apply (\hat{a}^\dagger)^i: raises state k to m
+                // m is the target index
+                let m = k + i;
+                if m >= ns {
+                    break;
+                }
+
+                // Operator Factor: sqrt(m! * n!) / k!
+                // cache.sqrt_factors assumes sqrt(x!)
+                // cache.inv_factors assumes 1/x!
+                let op_factor =
+                    cache.sqrt_factors[m] * cache.sqrt_factors[n] * cache.inv_factors[k];
+
+                psi_out[m] += scaled * op_factor * psi[n];
+            }
+        }
+    }
+}
+
+fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 'static>(
+    params: &T,
+    size: usize,
+) -> Vec<Box<SimpleStochasticFn>> {
+    let params0 = params.clone();
+    let params1 = params.clone();
+    let random_scatter_prefactor = (params.kbt_div_hbar() * params.dimensionless_lambda()
+        / (16.0 * params.dimensionless_mass()))
+    .sqrt();
+
+    let operator_cache_0 = OperatorCache::build(size);
+    let operator_cache_1 = OperatorCache::build(size);
+    vec![
+        Box::new(move |_t, state| {
+            let ratio = state[1];
+            let mut terms = [[Complex::<f64>::default(); 3]; 3];
+            // Add groundstate contribution
+            terms[1][0] = random_scatter_prefactor * (2.0 - ratio);
+            terms[0][1] = random_scatter_prefactor * (2.0 + ratio.conj());
+
+            // Add extra noise term (non groundstate contribution)
+
+            let mut out = Array1::zeros(state.len());
+            add_scattering_terms(
+                &state.slice(s![2..]),
+                ratio,
+                terms,
+                &params0,
+                &operator_cache_0,
+                &mut out.slice_mut(s![2..]),
+            );
+
+            out
+        }),
+        Box::new(move |_t, state| {
+            let ratio = state[1];
+
+            let mut terms = [[Complex::<f64>::default(); 3]; 3];
+            // Add groundstate contribution
+            terms[1][0] = random_scatter_prefactor * (2.0 - ratio);
+            terms[0][1] = random_scatter_prefactor * (2.0 + ratio.conj());
+
+            // Add extra noise term (non groundstate contribution)
+            let expect_l = get_expect_l(&state.slice(s![2..]), ratio, &params1);
+            terms[0][0] -= expect_l;
+
+            let mut out = Array1::zeros(state.len());
+            add_scattering_terms(
+                &state.slice(s![2..]),
+                ratio,
+                terms,
+                &params1,
+                &operator_cache_1,
+                &mut out.slice_mut(s![2..]),
+            );
+            out
+        }),
+    ]
+}
+
+#[must_use]
+pub fn get_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync + 'static>(
+    params: &T,
+    size: usize,
+) -> SimpleStochasticSDESystem {
+    let params_coherent = params.clone();
+    let operator_cache = OperatorCache::build(size);
+    let random_scatter_prefactor = (params.kbt_div_hbar() * params.dimensionless_lambda()
+        / (8.0 * params.dimensionless_mass()))
+    .sqrt();
+
+    SimpleStochasticSDESystem {
+        coherent: Box::new(move |_t, state| {
+            let alpha = state[0];
+            let ratio = state[1];
+
+            let mut terms = [[Complex::<f64>::default(); 3]; 3];
+
+            // Add kinetic term
+            terms[1][0] += 2.0 * params_coherent.kbt_div_hbar() * alpha.im * ratio;
+            terms[0][1] += 2.0 * params_coherent.kbt_div_hbar() * alpha.im * (-ratio.conj());
+            terms[2][0] += Complex::i() * params_coherent.kbt_div_hbar() * ratio * ratio
+                / (params_coherent.dimensionless_mass());
+            terms[1][1] += Complex::i() * params_coherent.kbt_div_hbar() * ratio.norm_sqr()
+                / (params_coherent.dimensionless_mass());
+            terms[0][2] +=
+                Complex::i() * params_coherent.kbt_div_hbar() * ratio.conj() * ratio.conj()
+                    / (params_coherent.dimensionless_mass());
+
+            // Add deterministic open term
+            let deterministic_prefactor =
+                params_coherent.kbt_div_hbar() * params_coherent.dimensionless_lambda();
+            terms[1][0] += -deterministic_prefactor * alpha.im;
+            terms[0][1] += -deterministic_prefactor * alpha.im;
+            terms[2][0] += deterministic_prefactor * (ratio * ratio + 4.0 * ratio - 4.0)
+                / (8.0 * params_coherent.dimensionless_mass());
+            terms[1][1] += Complex::i()
+                * params_coherent.kbt_div_hbar()
+                * (4.0 * ratio.re - ratio.norm_sqr() - 4.0)
+                / (8.0 * params_coherent.dimensionless_mass());
+            terms[0][2] += deterministic_prefactor
+                * (ratio.conj() * ratio.conj() - 4.0 * ratio.conj() - 4.0)
+                / (8.0 * params_coherent.dimensionless_mass());
+
+            // Add extra open term (non groundstate contribution)
+            let expect_l = get_expect_l(&state.slice(s![2..]), ratio, &params_coherent);
+            terms[0][0] += expect_l.norm_sqr();
+            terms[0][0] += 4.0 * random_scatter_prefactor * expect_l * (alpha.re);
+            terms[1][0] += random_scatter_prefactor * expect_l * (2.0 - ratio);
+            terms[0][1] += random_scatter_prefactor * expect_l * (2.0 + ratio.conj());
+            let expect_l_dagger_l =
+                get_expect_l_dagger_l(&state.slice(s![2..]), alpha, ratio, &params_coherent);
+            terms[0][0] += 0.5 * expect_l_dagger_l;
+
+            let mut out = Array1::zeros(state.len());
+            add_scattering_terms(
+                &state.slice(s![2..]),
+                ratio,
+                terms,
+                &params_coherent,
+                &operator_cache,
+                &mut out.slice_mut(s![2..]),
+            );
+
+            out
+        }),
+        incoherent: build_quantum_incoherent_terms(&params.clone(), size),
     }
 }
