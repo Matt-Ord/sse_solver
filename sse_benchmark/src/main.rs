@@ -8,10 +8,13 @@ use sse_solver::{
     distribution::StandardComplexNormal,
     solvers::{EulerStepper, FixedStepSolver, Order2ExplicitWeakStepper, Solver, StateMeasurement},
     sparse::{BandedArray, PlannedSplitScatteringArray, SplitScatteringArray},
-    system::sse::{FullNoise, SSESystem},
+    system::{
+        langevin::{HarmonicLangevinParameters, get_quantum_langevin_system},
+        sse::{FullNoise, SSESystem},
+    },
 };
 extern crate test;
-use std::simd::{prelude::*, StdFloat};
+use std::simd::{StdFloat, prelude::*};
 
 use ndarray::linalg::Dot;
 
@@ -187,6 +190,35 @@ fn second_order_solver_benchmark_sparse() {
             &StateMeasurement {},
             &(0..100).map(f64::from).collect::<Vec<_>>(),
         ),
+    );
+}
+
+fn harmonic_benchmark() {
+    let params = HarmonicLangevinParameters {
+        dimensionless_lambda: 0.005,
+        dimensionless_omega: 0.174,
+        dimensionless_mass: 1.0,
+        kbt_div_hbar: 1.0,
+    };
+    let state_size = 10;
+    let target_dt = 1e-4;
+    let times: Vec<f64> = (0..10).map(f64::from).collect();
+    let system = get_quantum_langevin_system(&params, state_size);
+    let mut initial_state = Array1::zeros(state_size + 2);
+    initial_state[1] = Complex {
+        re: 0.08799028073183925,
+        im: -0.013167532121894853,
+    };
+    initial_state[2] = Complex::new(1.0, 0.0);
+
+    let out = FixedStepSolver {
+        stepper: EulerStepper {},
+        target_dt,
+    }
+    .solve(&initial_state, &system, &StateMeasurement {}, &times);
+    assert!(
+        out.iter()
+            .all(|state| { state.iter().all(|x| !x.re.is_nan() && !x.im.is_nan()) })
     );
 }
 
@@ -655,5 +687,5 @@ fn mul_rand_array() {
     test::black_box(mul_bench(lhs, rhs, test::black_box(500000)));
 }
 fn main() {
-    second_order_solver_benchmark_sparse()
+    harmonic_benchmark()
 }
