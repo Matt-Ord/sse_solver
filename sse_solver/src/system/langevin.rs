@@ -803,7 +803,6 @@ fn add_scattering_terms<T: LangevinParameters>(
     // \hat{O} = \sum_{i,j} terms[i][j] (mu + nu)^i (mu + nu)^*^j / (i! j!) \hat{a}^\dagger^i \hat{a}^j
     for (i, terms_i) in terms.iter().enumerate() {
         for (j, term) in terms_i.iter().enumerate() {
-            assert_eq!(*term, terms[i][j]);
             if term.norm_sqr() < 1e-24 {
                 continue;
             }
@@ -858,6 +857,8 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
             terms[0][1] = random_scatter_prefactor * (2.0 + ratio.conj());
 
             // Add extra noise term (non groundstate contribution)
+            let expect_l = get_expect_l(&state.slice(s![2..]), ratio, &params0);
+            terms[0][0] -= expect_l;
 
             let mut out = Array1::zeros(state.len());
             add_scattering_terms(
@@ -943,7 +944,7 @@ pub fn get_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync +
 
             // Add extra open term (non groundstate contribution)
             let expect_l = get_expect_l(&state.slice(s![2..]), ratio, &params_coherent);
-            terms[0][0] += expect_l.norm_sqr();
+            terms[0][0] -= expect_l.norm_sqr();
             terms[0][0] += 4.0 * random_scatter_prefactor * expect_l * (alpha.re);
             terms[1][0] += random_scatter_prefactor * expect_l * (2.0 - ratio);
             terms[0][1] += random_scatter_prefactor * expect_l * (2.0 + ratio.conj());
