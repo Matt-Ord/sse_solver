@@ -858,7 +858,7 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
 
             // Add extra noise term (non groundstate contribution)
             let expect_l = get_expect_l(&state.slice(s![2..]), ratio, &params0);
-            terms[0][0] -= expect_l;
+            terms[0][0] -= 0.5.sqrt() * expect_l;
 
             let mut out = Array1::zeros(state.len());
             add_scattering_terms(
@@ -882,7 +882,7 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
 
             // Add extra noise term (non groundstate contribution)
             let expect_l = get_expect_l(&state.slice(s![2..]), ratio, &params1);
-            terms[0][0] -= expect_l;
+            terms[0][0] -= 0.5.sqrt() * expect_l;
 
             let mut out = Array1::zeros(state.len());
             add_scattering_terms(
@@ -934,9 +934,7 @@ pub fn get_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync +
             terms[0][1] += -deterministic_prefactor * alpha.im;
             terms[2][0] += deterministic_prefactor * (ratio * ratio + 4.0 * ratio - 4.0)
                 / (8.0 * params_coherent.dimensionless_mass());
-            terms[1][1] += Complex::i()
-                * params_coherent.kbt_div_hbar()
-                * (4.0 * ratio.re - ratio.norm_sqr() - 4.0)
+            terms[1][1] += deterministic_prefactor * (4.0 * ratio.re - ratio.norm_sqr() - 4.0)
                 / (8.0 * params_coherent.dimensionless_mass());
             terms[0][2] += deterministic_prefactor
                 * (ratio.conj() * ratio.conj() - 4.0 * ratio.conj() - 4.0)
@@ -945,9 +943,9 @@ pub fn get_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync +
             // Add extra open term (non groundstate contribution)
             let expect_l = get_expect_l(&state.slice(s![2..]), ratio, &params_coherent);
             terms[0][0] -= expect_l.norm_sqr();
-            terms[0][0] += 4.0 * random_scatter_prefactor * expect_l * (alpha.re);
-            terms[1][0] += random_scatter_prefactor * expect_l * (2.0 - ratio);
-            terms[0][1] += random_scatter_prefactor * expect_l * (2.0 + ratio.conj());
+            terms[0][0] += 4.0 * random_scatter_prefactor * expect_l * alpha.re;
+            terms[1][0] += random_scatter_prefactor * expect_l.conj() * (2.0 - ratio);
+            terms[0][1] += random_scatter_prefactor * expect_l.conj() * (2.0 + ratio.conj());
             let expect_l_dagger_l =
                 get_expect_l_dagger_l(&state.slice(s![2..]), alpha, ratio, &params_coherent);
             terms[0][0] += 0.5 * expect_l_dagger_l;
