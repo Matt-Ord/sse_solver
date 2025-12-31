@@ -312,6 +312,7 @@ fn get_lowered_state(psi: &ArrayView1<Complex<f64>>) -> Array1<Complex<f64>> {
     }
     out
 }
+
 fn get_double_lowered_state(psi: &ArrayView1<Complex<f64>>) -> Array1<Complex<f64>> {
     let ns = psi.len();
     let mut out = Array1::zeros(ns);
@@ -469,8 +470,8 @@ impl OperatorCache {
 
 fn get_mu_plus_nu(ratio: Complex<f64>, dimensionless_m: f64) -> Complex<f64> {
     let m_plus_r = dimensionless_m + ratio;
-    let mu_plus_mu_sq = dimensionless_m * m_plus_r.conj() / (ratio.re * m_plus_r);
-    mu_plus_mu_sq.sqrt()
+    let mu_plus_mu_sq = dimensionless_m * m_plus_r.norm_sqr() / ratio.re;
+    mu_plus_mu_sq.sqrt() / m_plus_r
 }
 
 fn get_expect_a(psi: &ArrayView1<Complex<f64>>) -> Complex<f64> {
@@ -490,9 +491,9 @@ fn get_e_10(
     get_expect_a(psi).conj() * mu_plus_nu
 }
 fn get_expect_aa(psi: &ArrayView1<Complex<f64>>) -> Complex<f64> {
-    let a_state = get_double_lowered_state(psi);
+    let aa_state = get_double_lowered_state(psi);
     psi.iter()
-        .zip(a_state.iter())
+        .zip(aa_state.iter())
         .map(|(psi_val, a_val)| psi_val.conj() * a_val)
         .sum::<Complex<f64>>()
 }
@@ -532,6 +533,7 @@ fn get_expect_l_dagger_l<T: LangevinParameters>(
     let e_10 = get_e_10(psi, ratio, params.dimensionless_mass());
     let e_20 = get_e_20(psi, ratio, params.dimensionless_mass());
     let e_11 = get_e_11(psi, ratio, params.dimensionless_mass());
+
     let lambda = params.dimensionless_lambda();
     let prefactor = params.kbt_div_hbar() * lambda / (4.0 * params.dimensionless_mass());
     let e_10_term =
@@ -825,8 +827,6 @@ fn add_scattering_terms<T: LangevinParameters>(
                 }
 
                 // Operator Factor: sqrt(m! * n!) / k!
-                // cache.sqrt_factors assumes sqrt(x!)
-                // cache.inv_factors assumes 1/x!
                 let op_factor =
                     cache.sqrt_factors[m] * cache.sqrt_factors[n] * cache.inv_factors[k];
 
@@ -917,11 +917,16 @@ pub fn get_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync +
             let mut terms = [[Complex::<f64>::default(); 3]; 3];
 
             // Add kinetic term
+            terms[0][0] -= Complex::i()
+                * params_coherent.kbt_div_hbar()
+                * (params_coherent.dimensionless_mass() * 2.0 * alpha.im.square());
+            terms[0][0] -=
+                Complex::i() * params_coherent.kbt_div_hbar() * ratio.norm_sqr() / (2.0 * ratio.re);
             terms[1][0] += 2.0 * params_coherent.kbt_div_hbar() * alpha.im * ratio;
-            terms[0][1] += 2.0 * params_coherent.kbt_div_hbar() * alpha.im * (-ratio.conj());
+            terms[0][1] -= 2.0 * params_coherent.kbt_div_hbar() * alpha.im * ratio.conj();
             terms[2][0] += Complex::i() * params_coherent.kbt_div_hbar() * ratio * ratio
                 / (params_coherent.dimensionless_mass());
-            terms[1][1] += Complex::i() * params_coherent.kbt_div_hbar() * ratio.norm_sqr()
+            terms[1][1] -= Complex::i() * params_coherent.kbt_div_hbar() * ratio.norm_sqr()
                 / (params_coherent.dimensionless_mass());
             terms[0][2] +=
                 Complex::i() * params_coherent.kbt_div_hbar() * ratio.conj() * ratio.conj()
@@ -930,8 +935,10 @@ pub fn get_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync +
             // Add deterministic open term
             let deterministic_prefactor =
                 params_coherent.kbt_div_hbar() * params_coherent.dimensionless_lambda();
-            terms[1][0] += -deterministic_prefactor * alpha.im;
-            terms[0][1] += -deterministic_prefactor * alpha.im;
+            terms[0][0] -= Complex::i() * deterministic_prefactor * 0.5 * (alpha * alpha).im;
+            terms[0][0] += Complex::i() * 0.125 * deterministic_prefactor * ratio.im / ratio.re;
+            terms[1][0] -= Complex::i() * deterministic_prefactor * alpha.im;
+            terms[0][1] -= Complex::i() * deterministic_prefactor * alpha.im;
             terms[2][0] += deterministic_prefactor * (ratio * ratio + 4.0 * ratio - 4.0)
                 / (8.0 * params_coherent.dimensionless_mass());
             terms[1][1] += deterministic_prefactor * (4.0 * ratio.re - ratio.norm_sqr() - 4.0)
@@ -944,6 +951,7 @@ pub fn get_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync +
             let expect_l = get_expect_l(&state.slice(s![2..]), ratio, &params_coherent);
             terms[0][0] -= expect_l.norm_sqr();
             terms[0][0] += 4.0 * random_scatter_prefactor * expect_l * alpha.re;
+            terms[0][0] += Complex::i() * 2.0 * random_scatter_prefactor * expect_l * alpha.im;
             terms[1][0] += random_scatter_prefactor * expect_l.conj() * (2.0 - ratio);
             terms[0][1] += random_scatter_prefactor * expect_l.conj() * (2.0 + ratio.conj());
             let expect_l_dagger_l =
