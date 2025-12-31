@@ -878,12 +878,12 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
 
             let mut terms = [[Complex::<f64>::default(); 3]; 3];
             // Add groundstate contribution
-            terms[1][0] = random_scatter_prefactor * (2.0 - ratio);
-            terms[0][1] = random_scatter_prefactor * (2.0 + ratio.conj());
+            terms[1][0] = Complex::i() * random_scatter_prefactor * (2.0 - ratio);
+            terms[0][1] = Complex::i() * random_scatter_prefactor * (2.0 + ratio.conj());
 
             // Add extra noise term (non groundstate contribution)
             let expect_l = get_expect_l(&state.slice(s![2..]), ratio, &params1);
-            terms[0][0] -= 0.5.sqrt() * expect_l;
+            terms[0][0] -= Complex::i() * 0.5.sqrt() * expect_l;
 
             let mut out = Array1::zeros(state.len());
             add_scattering_terms(
