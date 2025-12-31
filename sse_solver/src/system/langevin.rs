@@ -474,12 +474,16 @@ fn get_mu_plus_nu(ratio: Complex<f64>, dimensionless_m: f64) -> Complex<f64> {
     mu_plus_mu_sq.sqrt() / m_plus_r
 }
 
+fn inner_product(psi1: &ArrayView1<Complex<f64>>, psi2: &ArrayView1<Complex<f64>>) -> Complex<f64> {
+    psi1.iter()
+        .zip(psi2.iter())
+        .map(|(val1, val2)| val1.conj() * val2)
+        .sum::<Complex<f64>>()
+}
+
 fn get_expect_a(psi: &ArrayView1<Complex<f64>>) -> Complex<f64> {
     let a_state = get_lowered_state(psi);
-    psi.iter()
-        .zip(a_state.iter())
-        .map(|(psi_val, a_val)| psi_val.conj() * a_val)
-        .sum::<Complex<f64>>()
+    inner_product(psi, &a_state.view())
 }
 
 fn get_e_10(
@@ -492,10 +496,7 @@ fn get_e_10(
 }
 fn get_expect_aa(psi: &ArrayView1<Complex<f64>>) -> Complex<f64> {
     let aa_state = get_double_lowered_state(psi);
-    psi.iter()
-        .zip(aa_state.iter())
-        .map(|(psi_val, a_val)| psi_val.conj() * a_val)
-        .sum::<Complex<f64>>()
+    inner_product(psi, &aa_state.view())
 }
 fn get_e_20(
     psi: &ArrayView1<Complex<f64>>,
@@ -507,7 +508,7 @@ fn get_e_20(
 }
 fn get_expect_a_dagger_a(psi: &ArrayView1<Complex<f64>>) -> f64 {
     let a_state = get_lowered_state(psi);
-    a_state.iter().map(num_complex::Complex::norm_sqr).sum()
+    inner_product(&a_state.view(), &a_state.view()).re
 }
 fn get_e_11(psi: &ArrayView1<Complex<f64>>, ratio: Complex<f64>, dimensionless_m: f64) -> f64 {
     let mu_plus_nu = get_mu_plus_nu(ratio, dimensionless_m);
@@ -852,29 +853,33 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
     vec![
         Box::new(move |_t, state| {
             let ratio = state[1];
+            let state_vec = state.slice(s![2..]);
             let mut terms = [[Complex::<f64>::default(); 3]; 3];
             // Add groundstate contribution
             terms[1][0] = random_scatter_prefactor * (2.0 - ratio);
             terms[0][1] = random_scatter_prefactor * (2.0 + ratio.conj());
 
             // Add extra noise term (non groundstate contribution)
-            let expect_l = get_expect_l(&state.slice(s![2..]), ratio, &params0);
-            terms[0][0] -= 0.5.sqrt() * expect_l;
+            // let expect_l = get_expect_l(&state.slice(s![2..]), ratio, &params0);
+            // terms[0][0] -= 0.5.sqrt() * expect_l;
 
             let mut out = Array1::zeros(state.len());
+            let mut out_state = out.slice_mut(s![2..]);
             add_scattering_terms(
-                &state.slice(s![2..]),
+                &state_vec,
                 ratio,
                 terms,
                 &params0,
                 &operator_cache_0,
-                &mut out.slice_mut(s![2..]),
+                &mut out_state,
             );
+            out_state -= &(&state_vec * inner_product(&state_vec, &out_state.view()));
 
             out
         }),
         Box::new(move |_t, state| {
             let ratio = state[1];
+            let state_vec = state.slice(s![2..]);
 
             let mut terms = [[Complex::<f64>::default(); 3]; 3];
             // Add groundstate contribution
@@ -882,18 +887,21 @@ fn build_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 
             terms[0][1] = Complex::i() * random_scatter_prefactor * (2.0 + ratio.conj());
 
             // Add extra noise term (non groundstate contribution)
-            let expect_l = get_expect_l(&state.slice(s![2..]), ratio, &params1);
-            terms[0][0] -= Complex::i() * 0.5.sqrt() * expect_l;
+            // let expect_l = get_expect_l(&state.slice(s![2..]), ratio, &params1);
+            // terms[0][0] -= Complex::i() * 0.5.sqrt() * expect_l;
 
             let mut out = Array1::zeros(state.len());
+            let mut out_state = out.slice_mut(s![2..]);
             add_scattering_terms(
-                &state.slice(s![2..]),
+                &state_vec,
                 ratio,
                 terms,
                 &params1,
                 &operator_cache_1,
-                &mut out.slice_mut(s![2..]),
+                &mut out_state,
             );
+            out_state -= &(&state_vec * inner_product(&state_vec, &out_state.view()));
+
             out
         }),
     ]
@@ -918,20 +926,20 @@ pub fn get_quantum_langevin_system<T: LangevinParameters + Clone + Send + Sync +
             let mut terms = [[Complex::<f64>::default(); 3]; 3];
 
             // Add kinetic term
-            terms[0][0] -= Complex::i()
-                * params_coherent.kbt_div_hbar()
-                * (params_coherent.dimensionless_mass() * 2.0 * alpha.im.square());
-            terms[0][0] -=
-                Complex::i() * params_coherent.kbt_div_hbar() * ratio.norm_sqr() / (2.0 * ratio.re);
-            terms[1][0] += 2.0 * params_coherent.kbt_div_hbar() * alpha.im * ratio;
-            terms[0][1] -= 2.0 * params_coherent.kbt_div_hbar() * alpha.im * ratio.conj();
-            terms[2][0] += Complex::i() * params_coherent.kbt_div_hbar() * ratio * ratio
-                / (params_coherent.dimensionless_mass());
-            terms[1][1] -= Complex::i() * params_coherent.kbt_div_hbar() * ratio.norm_sqr()
-                / (params_coherent.dimensionless_mass());
-            terms[0][2] +=
-                Complex::i() * params_coherent.kbt_div_hbar() * ratio.conj() * ratio.conj()
-                    / (params_coherent.dimensionless_mass());
+            // terms[0][0] -= Complex::i()
+            //     * params_coherent.kbt_div_hbar()
+            //     * (params_coherent.dimensionless_mass() * 2.0 * alpha.im.square());
+            // terms[0][0] -=
+            //     Complex::i() * params_coherent.kbt_div_hbar() * ratio.norm_sqr() / (2.0 * ratio.re);
+            // terms[1][0] += 2.0 * params_coherent.kbt_div_hbar() * alpha.im * ratio;
+            // terms[0][1] -= 2.0 * params_coherent.kbt_div_hbar() * alpha.im * ratio.conj();
+            // terms[2][0] += Complex::i() * params_coherent.kbt_div_hbar() * ratio * ratio
+            //     / (params_coherent.dimensionless_mass());
+            // terms[1][1] -= Complex::i() * params_coherent.kbt_div_hbar() * ratio.norm_sqr()
+            //     / (params_coherent.dimensionless_mass());
+            // terms[0][2] +=
+            //     Complex::i() * params_coherent.kbt_div_hbar() * ratio.conj() * ratio.conj()
+            //         / (params_coherent.dimensionless_mass());
 
             // // Add deterministic open term
             // let deterministic_prefactor =
