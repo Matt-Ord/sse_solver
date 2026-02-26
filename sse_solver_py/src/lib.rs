@@ -12,7 +12,7 @@ use sse_solver::solvers::{
 use sse_solver::sparse::PlannedSplitScatteringArray;
 use sse_solver::system::langevin::{
     DoubleHarmonicLangevinParameters, HarmonicLangevinParameters, PeriodicLangevinParameters,
-    get_langevin_system, get_local_quantum_langevin_system, get_quantum_langevin_system,
+    get_langevin_system, get_local_quantum_langevin_system,
     get_stable_local_quantum_langevin_system,
 };
 use sse_solver::system::simple_stochastic::{SimpleStochasticFn, SimpleStochasticSDESystem};
@@ -672,37 +672,6 @@ fn solve_harmonic_quantum_langevin(
         .collect())
 }
 
-#[pyfunction]
-fn solve_harmonic_full_quantum_langevin(
-    initial_state: (Complex<f64>, Complex<f64>, Vec<Complex<f64>>),
-    params: PyRef<HarmonicLangevinSystemParameters>,
-    config: PyRef<SimulationConfig>,
-) -> PyResult<Vec<Complex<f64>>> {
-    let system = get_quantum_langevin_system(
-        &HarmonicLangevinParameters {
-            dimensionless_mass: params.dimensionless_mass,
-            dimensionless_omega: params.dimensionless_omega,
-            dimensionless_lambda: params.dimensionless_lambda,
-            kbt_div_hbar: params.kbt_div_hbar,
-        },
-        initial_state.2.len(),
-    );
-
-    let mut state_vec = Array1::zeros(initial_state.2.len() + 2);
-    state_vec[0] = initial_state.0;
-    state_vec[1] = initial_state.1;
-    state_vec
-        .slice_mut(s![2..])
-        .assign(&Array1::from(initial_state.2.clone()));
-
-    Ok(config
-        .simulate_system(&state_vec, &system, &StateMeasurement {})
-        .iter()
-        .flat_map(|d| d.iter())
-        .cloned()
-        .collect())
-}
-
 #[pyclass]
 struct DoubleHarmonicLangevinSystemParameters {
     #[pyo3(get, set)]
@@ -944,7 +913,6 @@ fn _solver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_harmonic_langevin, m)?)?;
     m.add_function(wrap_pyfunction!(solve_harmonic_stable_quantum_langevin, m)?)?;
     m.add_function(wrap_pyfunction!(solve_harmonic_quantum_langevin, m)?)?;
-    m.add_function(wrap_pyfunction!(solve_harmonic_full_quantum_langevin, m)?)?;
     m.add_function(wrap_pyfunction!(solve_double_harmonic_langevin, m)?)?;
     m.add_function(wrap_pyfunction!(
         solve_double_harmonic_stable_quantum_langevin,
