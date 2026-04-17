@@ -1,6 +1,6 @@
 use ndarray::Array2;
 use num_complex::Complex;
-use rand::Rng;
+use rand::{Rng, RngExt};
 use rand_distr::{Distribution, StandardNormal, weighted::WeightedIndex};
 
 /// The Standard Normal distribution for a complex number

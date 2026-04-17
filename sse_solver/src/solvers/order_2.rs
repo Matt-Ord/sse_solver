@@ -2,7 +2,7 @@ use ndarray::Array1;
 use ndarray_linalg::Norm;
 use num_complex::Complex;
 
-use rand::Rng;
+use rand::RngExt;
 use rand_distr::Distribution;
 
 use crate::{

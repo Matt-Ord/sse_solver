@@ -15,20 +15,43 @@ authors = [{ name = "Matthew Ord", email = "matthew.ord1@gmail.com" }]
 readme = "README.md"
 dynamic = ["version"]
 
-[project.optional-dependencies]
-dev = ["ruff~=0.3.0", "pytest~=8.0.1"]
 
 [tool.ruff]
 unsafe-fixes = true
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = ["D103", "D104", "D100", "D417", "TD003", "TD002"]
-unfixable = ["ERA001", "T201"]
+preview = true
+ignore = [
+    "COM812",
+    "E501",
+    "S101",
+    "PT009",
+    "D100",
+    "D105",
+    "CPY001",
+    "TD003",
+    "TD002",
+    "DOC201",
+    "DOC402",
+    "PD",
+]
+fixable = ["ALL"]
+unfixable = ["T201"]
 
 [tool.ruff.lint.extend-per-file-ignores]
-"examples/**/*" = ["T201", "INP001"]
-"tests/**/*" = []
+"tests/**/*" = ["PLR6301", "INP001", "PLR0914", "D101", "D102", "D103", "D104"]
+"scripts/**/*" = [
+    "PLR6301",
+    "INP001",
+    "PLR0914",
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+]
+"examples/**/*" = ["INP001", "T201"]
+"docs/**/*" = ["INP001", "I002"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -37,3 +60,12 @@ testpaths = ["tests"]
 features = ["pyo3/extension-module"]
 module-name = "sse_solver_py._solver"
 rustc-args = ["-Ctarget-cpu=native"]
+
+[dependency-groups]
+dev = [
+    "numpy>=2.4.4",
+    "qutip>=5.2.3",
+    "ruff",
+    "pytest~=9.0.0",
+    "ty>=0.0.31",
+]

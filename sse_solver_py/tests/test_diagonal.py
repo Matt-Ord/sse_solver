@@ -4,17 +4,17 @@ import numpy as np
 import pytest
 import qutip
 
-from sse_solver_py import solve_sse_euler
+from sse_solver_py import SimulationConfig, solve_sse
 
 rng = np.random.default_rng()
 
 
-@pytest.fixture()
+@pytest.fixture
 def n_states() -> int:
-    return rng.integers(1, 10)
+    return rng.integers(1, 10).item()
 
 
-@pytest.fixture()
+@pytest.fixture
 def diagonal_hamiltonian(
     n_states: int,
 ) -> np.ndarray[tuple[int, int], np.dtype[np.complex128]]:
@@ -26,15 +26,11 @@ def test_zero_time(
 ) -> None:
     initial_state = np.zeros_like(diagonal_hamiltonian[0])
     initial_state[0] = 1
-    out = solve_sse_euler(
+    out = solve_sse(
         initial_state,
-        diagonal_hamiltonian.reshape(-1),
+        diagonal_hamiltonian.tolist(),
         [],
-        [],
-        [],
-        1,
-        1,
-        0,
+        SimulationConfig(times=[0.0], method="Euler", dt=0),
     )
     np.testing.assert_array_equal(initial_state, out)
 
@@ -45,16 +41,15 @@ def test_small_time(
     initial_state = np.zeros_like(diagonal_hamiltonian[0])
     initial_state[0] = 1
     dt = np.pi / (10000 * diagonal_hamiltonian[0, 0])
-    out = solve_sse_euler(
+    out = solve_sse(
         initial_state,
-        list(diagonal_hamiltonian.reshape(-1)),
+        diagonal_hamiltonian.tolist(),
         [],
-        [],
-        [],
-        3,
-        10000,
-        dt,
+        SimulationConfig(
+            times=np.linspace(0, dt, 10000), method="Euler", dt=dt, n_trajectories=3
+        ),
     )
+
     out = np.array(out).reshape(3, -1)
     np.testing.assert_array_equal(initial_state, out[0])
     np.testing.assert_array_almost_equal(
@@ -97,17 +92,18 @@ def test_same_as_qutip(
 
     expected = np.array([s.full() for s in out.states[0]]).reshape(times.size, -1)
 
-    actual_raw = solve_sse_euler(
+    out = solve_sse(
         initial_state,
-        diagonal_hamiltonian.reshape(-1),
+        diagonal_hamiltonian.tolist(),
         [],
-        [],
-        [],
-        times.size,
-        1,
-        dt,
+        SimulationConfig(
+            times=times,
+            method="Euler",
+            dt=dt,
+        ),
     )
-    actual = np.array(actual_raw).reshape(times.size, -1)
+
+    actual = np.array(out).reshape(times.size, -1)
 
     for i in range(times.size):
         np.testing.assert_array_almost_equal(

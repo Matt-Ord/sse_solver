@@ -46,10 +46,10 @@ impl LangevinParameters for HarmonicLangevinParameters {
         _ratio: Complex<f64>,
     ) -> f64 {
         if idx == 1 {
-            return self.dimensionless_omega.square() * alpha.re / (2.0 * self.dimensionless_mass);
+            return self.dimensionless_omega.powi(2) * alpha.re / (2.0 * self.dimensionless_mass);
         }
         if idx == 2 {
-            return self.dimensionless_omega.square() / (4.0 * self.dimensionless_mass);
+            return self.dimensionless_omega.powi(2) / (4.0 * self.dimensionless_mass);
         }
         0.0
     }
@@ -89,7 +89,7 @@ impl DoubleHarmonicLangevinParameters {
     }
     fn prefactor(&self) -> f64 {
         let l_times_r = self.left_distance_div_lengthscale * self.right_distance_div_lengthscale;
-        self.dimensionless_omega_barrier.square() / (12.0 * self.dimensionless_mass * l_times_r)
+        self.dimensionless_omega_barrier.powi(2) / (12.0 * self.dimensionless_mass * l_times_r)
     }
 }
 
@@ -117,9 +117,9 @@ impl LangevinParameters for DoubleHarmonicLangevinParameters {
 
                 (2.0.sqrt() * prefactor * 0.125)
                     * (4.0 * c2 * displacement_div_l
-                        + 3.0 * c3 * (2.0 * displacement_div_l.square() + width_factor)
+                        + 3.0 * c3 * (2.0 * displacement_div_l.powi(2) + width_factor)
                         + (4.0 * c4 * displacement_div_l)
-                            * (2.0 * displacement_div_l.square() + 3.0 * width_factor))
+                            * (2.0 * displacement_div_l.powi(2) + 3.0 * width_factor))
             }
             2 => {
                 let c4 = self.c4();
@@ -128,7 +128,7 @@ impl LangevinParameters for DoubleHarmonicLangevinParameters {
                 prefactor
                     * (c2
                         + 3.0 * c3 * displacement_div_l
-                        + 3.0 * c4 * (2.0 * displacement_div_l.square() + width_factor))
+                        + 3.0 * c4 * (2.0 * displacement_div_l.powi(2) + width_factor))
             }
             3 => {
                 let c4 = self.c4();
@@ -151,8 +151,8 @@ impl LangevinParameters for DoubleHarmonicLangevinParameters {
 
         (2.0.sqrt() * prefactor * 0.125)
             * (4.0 * c2 * displacement_div_l
-                + 3.0 * c3 * (2.0 * displacement_div_l.square())
-                + (4.0 * c4 * displacement_div_l) * (2.0 * displacement_div_l.square()))
+                + 3.0 * c3 * (2.0 * displacement_div_l.powi(2))
+                + (4.0 * c4 * displacement_div_l) * (2.0 * displacement_div_l.powi(2)))
     }
 }
 
@@ -204,10 +204,10 @@ impl LangevinParameters for PeriodicLangevinParameters {
             #[allow(clippy::cast_precision_loss)]
             let phase = k * n_i as f64;
 
-            let prefactor =
-                2.0 * (-0.25 * self.dimensionless_mass * phase.square() / ratio.re).exp();
+            let prefactor = 2.0.powf(1.0 - (f64::from(idx) / 2.0))
+                * (-0.25 * self.dimensionless_mass * phase.powi(2) / ratio.re).exp();
 
-            let inner = (Complex::i() * phase * x_0).exp() * v_k * (Complex::i() * phase).powu(idx);
+            let inner = (Complex::I * phase * x_0).exp() * v_k * (Complex::I * phase).powu(idx);
 
             out += prefactor * inner.re;
         }
@@ -222,9 +222,9 @@ impl LangevinParameters for PeriodicLangevinParameters {
             let phase = k * n_i as f64;
             // Classically, the wavefunction has a width much less than the potential period
             // So the exponential prefactor is approximately 1
-            let prefactor = 2.0;
+            let prefactor = 2.0.sqrt();
 
-            let inner = (Complex::i() * phase * x_0).exp() * v_k * (Complex::i() * phase).powu(1);
+            let inner = (Complex::I * phase * x_0).exp() * v_k * (Complex::I * phase).powu(1);
 
             out += prefactor * inner.re;
         }
@@ -245,7 +245,7 @@ pub fn get_langevin_system<T: LangevinParameters + Clone + Send + Sync + 'static
     params: &T,
 ) -> SimpleStochasticSDESystem {
     let alpha_im_factor = Complex {
-        re: 2.0 * params.kbt_div_hbar() * params.dimensionless_mass().square(),
+        re: 2.0 * params.kbt_div_hbar() * params.dimensionless_mass().powi(2),
         im: -params.dimensionless_lambda() * params.kbt_div_hbar(),
     };
     let force_prefactor = (params.kbt_div_hbar() * params.dimensionless_lambda()
@@ -294,7 +294,7 @@ fn get_quantum_im_force_prefactor<T: LangevinParameters>(
     let m = params.dimensionless_mass();
     Complex {
         re: prefactor * m * ratio.im / ratio.re,
-        im: prefactor * (2.0 - ratio.re - (ratio.im.square() / ratio.re)),
+        im: prefactor * (2.0 - ratio.re - (ratio.im.powi(2) / ratio.re)),
     }
 }
 
@@ -538,7 +538,7 @@ fn get_expect_l_dagger_l<T: LangevinParameters>(
     let lambda = params.dimensionless_lambda();
     let prefactor = params.kbt_div_hbar() * lambda / (4.0 * params.dimensionless_mass());
     let e_10_term = (e_10
-        * (4.0 * params.dimensionless_mass() * ratio * alpha.im * Complex::i() + 16.0 * alpha.re))
+        * (4.0 * params.dimensionless_mass() * ratio * alpha.im * Complex::I + 16.0 * alpha.re))
         .re;
     let e_20_term = ((4.0 - ratio * ratio) * e_20).re;
     let e_11_term = e_11 * (4.0 + ratio.norm_sqr());
@@ -629,8 +629,8 @@ fn add_s_11_scattering<T: LangevinParameters>(
 
     let a = -lambda * (ratio.norm_sqr() + 4.0) / (8.0 * m);
     let b_prefactor = lambda * (ratio.re * ratio.im) / (4.0 * m * (m + ratio).norm_sqr());
-    let b = b_prefactor * (4.0 + 4.0 * m - m.square()) * Complex::i();
-    let c_prefactor = -Complex::i() * 2.0 * ratio.re / ((m + ratio).norm_sqr());
+    let b = b_prefactor * (4.0 + 4.0 * m - m.powi(2)) * Complex::I;
+    let c_prefactor = -Complex::I * 2.0 * ratio.re / ((m + ratio).norm_sqr());
     let c2_val = params.get_potential_coefficient(2, alpha, ratio);
     let c = c_prefactor * (c2_val * (m + ratio.re) + m * ratio.re + ratio.norm_sqr());
     let s_11_val = params.kbt_div_hbar() * (a + b + c);

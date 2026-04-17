@@ -1,7 +1,7 @@
 use ndarray::Array1;
 use num_complex::Complex;
 
-use rand::Rng;
+use rand::RngExt;
 use rand_distr::StandardNormal;
 
 use crate::system::{SDEStep, SDESystem};
