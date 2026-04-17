@@ -9,9 +9,9 @@ pub mod system;
 mod tests {
     type DiagonalNoise = FullNoise<FactorizedArray<Complex<f64>>, FactorizedArray<Complex<f64>>>;
 
-    use ndarray::{linalg::Dot, Array1, Array2};
+    use ndarray::{Array1, Array2, linalg::Dot};
     use num_complex::{Complex, ComplexFloat};
-    use rand::Rng;
+    use rand::RngExt;
 
     use crate::{
         distribution::StandardComplexNormal,

@@ -1,3 +1,5 @@
+"""A Python package for solving the stochastic Schrödinger equation (SSE) using various numerical methods."""
+
 from __future__ import annotations
 
 from ._solver import (
@@ -27,7 +29,7 @@ from ._solver import (
 from ._sse_method import SSEMethod
 
 
-def solve_sse_split_operator(
+def solve_sse_split_operator(  # noqa: RUF067
     initial_state: list[complex],
     hamiltonian: SplitOperatorData,
     noise_operators: list[SplitOperatorData],
@@ -35,6 +37,7 @@ def solve_sse_split_operator(
     *,
     measurement_operators: list[SplitOperatorData] | None = None,
 ) -> list[complex]:
+    """Solve the stochastic Schrödinger equation using a split operator method."""
     if measurement_operators is None:
         return solve_sse_state_split_operator(
             initial_state,

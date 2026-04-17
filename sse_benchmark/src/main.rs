@@ -3,13 +3,13 @@
 
 use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex;
-use rand::Rng;
+use rand::RngExt;
 use sse_solver::{
     distribution::StandardComplexNormal,
     solvers::{EulerStepper, FixedStepSolver, Order2ExplicitWeakStepper, Solver, StateMeasurement},
     sparse::{BandedArray, PlannedSplitScatteringArray, SplitScatteringArray},
     system::{
-        langevin::{HarmonicLangevinParameters, get_quantum_langevin_system},
+        langevin::{HarmonicLangevinParameters, get_local_quantum_langevin_system},
         sse::{FullNoise, SSESystem},
     },
 };
@@ -203,7 +203,7 @@ fn harmonic_benchmark() {
     let state_size = 10;
     let target_dt = 1e-4;
     let times: Vec<f64> = (0..10).map(f64::from).collect();
-    let system = get_quantum_langevin_system(&params, state_size);
+    let system = get_local_quantum_langevin_system(&params, state_size);
     let mut initial_state = Array1::zeros(state_size + 2);
     initial_state[1] = Complex {
         re: 0.08799028073183925,

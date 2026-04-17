@@ -300,7 +300,7 @@ fn solve_sse(
         .collect())
 }
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Clone)]
 struct BandedData {
     #[pyo3(get)]
@@ -365,7 +365,7 @@ fn solve_sse_banded(
         .collect())
 }
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Clone)]
 struct SplitOperatorData {
     #[pyo3(get)]
