@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Self
 
-from ._sse_method import SSEMethod
+from sse_solver_py._sse_method import SSEMethod
 
 def solve_sse(
     initial_state: list[complex],
@@ -111,7 +111,12 @@ def solve_harmonic_langevin(
     params: HarmonicLangevinSystemParameters,
     config: SimulationConfig,
 ) -> list[complex]: ...
-def solve_harmonic_stable_quantum_langevin(
+def solve_harmonic_ballistic_langevin(
+    initial_state: complex,
+    params: HarmonicLangevinSystemParameters,
+    config: SimulationConfig,
+) -> list[complex]: ...
+def solve_harmonic_semiclassical_langevin(
     initial_state: tuple[complex, complex],
     params: HarmonicLangevinSystemParameters,
     config: SimulationConfig,
@@ -151,7 +156,12 @@ def solve_double_harmonic_langevin(
     params: DoubleHarmonicLangevinSystemParameters,
     config: SimulationConfig,
 ) -> list[complex]: ...
-def solve_double_harmonic_stable_quantum_langevin(
+def solve_double_harmonic_ballistic_langevin(
+    initial_state: complex,
+    params: DoubleHarmonicLangevinSystemParameters,
+    config: SimulationConfig,
+) -> list[complex]: ...
+def solve_double_harmonic_semiclassical_langevin(
     initial_state: tuple[complex, complex],
     params: DoubleHarmonicLangevinSystemParameters,
     config: SimulationConfig,
@@ -188,7 +198,12 @@ def solve_periodic_langevin(
     params: PeriodicLangevinSystemParameters,
     config: SimulationConfig,
 ) -> list[complex]: ...
-def solve_periodic_stable_quantum_langevin(
+def solve_periodic_ballistic_langevin(
+    initial_state: complex,
+    params: PeriodicLangevinSystemParameters,
+    config: SimulationConfig,
+) -> list[complex]: ...
+def solve_periodic_semiclassical_langevin(
     initial_state: tuple[complex, complex],
     params: PeriodicLangevinSystemParameters,
     config: SimulationConfig,
