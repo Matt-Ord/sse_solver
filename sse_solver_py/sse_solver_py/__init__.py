@@ -2,31 +2,34 @@
 
 from __future__ import annotations
 
-from ._solver import (
+from sse_solver_py._solver import (
     BandedData,
     DoubleHarmonicLangevinSystemParameters,
     HarmonicLangevinSystemParameters,
     PeriodicLangevinSystemParameters,
     SimulationConfig,
     SplitOperatorData,
+    solve_double_harmonic_ballistic_langevin,
     solve_double_harmonic_langevin,
     solve_double_harmonic_quantum_langevin,
-    solve_double_harmonic_stable_quantum_langevin,
+    solve_double_harmonic_semiclassical_langevin,
+    solve_harmonic_ballistic_langevin,
     solve_harmonic_langevin,
     solve_harmonic_quantum_langevin,
-    solve_harmonic_stable_quantum_langevin,
+    solve_harmonic_semiclassical_langevin,
+    solve_periodic_ballistic_langevin,
     solve_periodic_langevin,
     solve_periodic_quantum_langevin,
-    solve_periodic_stable_quantum_langevin,
+    solve_periodic_semiclassical_langevin,
     solve_simple_stochastic,
     solve_sse,
     solve_sse_banded,
     solve_sse_measured_split_operator,
 )
-from ._solver import (
+from sse_solver_py._solver import (
     solve_sse_split_operator as solve_sse_state_split_operator,
 )
-from ._sse_method import SSEMethod
+from sse_solver_py._sse_method import SSEMethod
 
 
 def solve_sse_split_operator(  # noqa: RUF067
@@ -62,15 +65,18 @@ __all__ = [
     "SSEMethod",
     "SimulationConfig",
     "SplitOperatorData",
+    "solve_double_harmonic_ballistic_langevin",
     "solve_double_harmonic_langevin",
     "solve_double_harmonic_quantum_langevin",
-    "solve_double_harmonic_stable_quantum_langevin",
+    "solve_double_harmonic_semiclassical_langevin",
+    "solve_harmonic_ballistic_langevin",
     "solve_harmonic_langevin",
     "solve_harmonic_quantum_langevin",
-    "solve_harmonic_stable_quantum_langevin",
+    "solve_harmonic_semiclassical_langevin",
+    "solve_periodic_ballistic_langevin",
     "solve_periodic_langevin",
     "solve_periodic_quantum_langevin",
-    "solve_periodic_stable_quantum_langevin",
+    "solve_periodic_semiclassical_langevin",
     "solve_simple_stochastic",
     "solve_sse",
     "solve_sse_banded",

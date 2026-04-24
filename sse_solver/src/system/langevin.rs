@@ -270,6 +270,37 @@ pub fn get_langevin_system<T: LangevinParameters + Clone + Send + Sync + 'static
     }
 }
 
+/// Create a `SimpleStochasticSDESystem` representing a particle
+/// in a harmonic potential with Langevin dynamics, ignoring the stochastic terms.
+///
+/// We simulate alpha, where alpha is the coherent state parameter.
+/// The ODE is given by:
+/// ```latex
+/// $d\alpha = \displaystyle \frac{K_{B} T \left(4 M^{2} \operatorname{im}{\left(\alpha\right)} - 2 i M \Lambda \operatorname{im}{\left(\alpha\right)} - i \Omega^{2} \operatorname{re}{\left(\alpha\right)}\right)}{2 M \text{hbar}}$
+/// ```
+#[must_use]
+pub fn get_ballistic_langevin_system<T: LangevinParameters + Clone + Send + Sync + 'static>(
+    params: &T,
+) -> SimpleStochasticSDESystem {
+    let alpha_im_factor = Complex {
+        re: 2.0 * params.kbt_div_hbar() * params.dimensionless_mass().powi(2),
+        im: -params.dimensionless_lambda() * params.kbt_div_hbar(),
+    };
+
+    let params_coherent = params.clone();
+    SimpleStochasticSDESystem {
+        coherent: Box::new(move |_t, state| {
+            let alpha = state[0];
+
+            let c1 = params_coherent.get_classical_potential_coefficient(alpha);
+            let potential_factor = Complex { re: 0.0, im: -c1 } * params_coherent.kbt_div_hbar();
+
+            array![alpha_im_factor * alpha.im + potential_factor]
+        }),
+        incoherent: vec![],
+    }
+}
+
 fn get_quantum_re_force_prefactor<T: LangevinParameters>(
     params: &T,
     ratio: Complex<f64>,
@@ -324,7 +355,7 @@ fn get_double_lowered_state(psi: &ArrayView1<Complex<f64>>) -> Array1<Complex<f6
     out
 }
 
-fn build_local_quantum_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 'static>(
+fn build_semiclassical_incoherent_terms<T: LangevinParameters + Clone + Send + Sync + 'static>(
     params: &T,
 ) -> Vec<Box<SimpleStochasticFn>> {
     let params0 = params.clone();
@@ -398,9 +429,7 @@ fn get_ratio_derivative<T: LangevinParameters>(
 /// in the most stable squeezed state
 /// in a harmonic potential with Calderia-Leggett quantum Langevin dynamics.
 #[must_use]
-pub fn get_stable_local_quantum_langevin_system<
-    T: LangevinParameters + Clone + Send + Sync + 'static,
->(
+pub fn get_semiclassical_langevin_system<T: LangevinParameters + Clone + Send + Sync + 'static>(
     params: &T,
 ) -> SimpleStochasticSDESystem {
     let alpha_im_factor = Complex {
@@ -425,7 +454,7 @@ pub fn get_stable_local_quantum_langevin_system<
 
             out
         }),
-        incoherent: build_local_quantum_incoherent_terms(&params_incoherent),
+        incoherent: build_semiclassical_incoherent_terms(&params_incoherent),
     }
 }
 
@@ -780,6 +809,6 @@ pub fn get_local_quantum_langevin_system<T: LangevinParameters + Clone + Send + 
 
             out
         }),
-        incoherent: build_local_quantum_incoherent_terms(&params_incoherent),
+        incoherent: build_semiclassical_incoherent_terms(&params_incoherent),
     }
 }
